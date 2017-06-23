@@ -38,9 +38,10 @@ pkg.deps.BLE_SM_SC:
 
 pkg.req_apis:
     - ble_transport
-    - console
-    - log
-    - stats
+#    - console
+#    - log
+#    - stats
 
 pkg.init:
     ble_hs_init: 200
+

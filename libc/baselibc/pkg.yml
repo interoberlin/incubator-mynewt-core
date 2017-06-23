@@ -25,5 +25,7 @@ pkg.keywords:
     - libc
 pkg.deps:
     - kernel/os
+
 pkg.req_apis:
-    - console
+#    - console
+

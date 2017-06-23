@@ -28,7 +28,7 @@ pkg.keywords:
 pkg.req_apis:
     - ble_driver
     - ble_transport
-    - stats
+#    - stats
 
 pkg.deps:
     - kernel/os

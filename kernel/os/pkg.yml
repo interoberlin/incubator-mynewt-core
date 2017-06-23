@@ -28,7 +28,7 @@ pkg.deps:
     - util/mem
 
 pkg.req_apis:
-    - console
+#    - console
 
 pkg.deps.OS_CLI:
     - sys/shell
