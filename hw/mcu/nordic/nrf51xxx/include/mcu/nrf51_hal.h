@@ -59,6 +59,7 @@ struct nrf51_hal_spi_cfg {
     uint8_t miso_pin;
     uint8_t ss_pin;
 };
+typedef struct nrf51_hal_spi_cfg nrf_drv_spi_config_t;
 
 struct hal_flash;
 extern const struct hal_flash nrf51_flash_dev;
