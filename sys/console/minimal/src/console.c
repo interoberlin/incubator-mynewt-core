@@ -62,13 +62,14 @@ static struct os_eventq *lines_queue;
 void
 console_write(const char *str, int cnt)
 {
+#if MYNEWT_VAL(CONSOLE_UART) || MYNEWT_VAL(CONSOLE_RTT)
     int i;
-
     for (i = 0; i < cnt; i++) {
         if (console_out((int)str[i]) == EOF) {
             break;
         }
     }
+#endif
 }
 
 #if MYNEWT_VAL(CONSOLE_COMPAT)
