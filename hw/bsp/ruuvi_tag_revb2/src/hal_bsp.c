@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #include <assert.h>
 #include <nrf52.h>
 #include "os/os_cputime.h"
@@ -31,6 +32,7 @@
 #include "hal/hal_watchdog.h"
 #include "hal/hal_i2c.h"
 #include "mcu/nrf52_hal.h"
+#include "defs/error.h"
 #if MYNEWT_VAL(UART_0) || MYNEWT_VAL(UART_1)
 #include "uart/uart.h"
 #endif
@@ -42,40 +44,9 @@
 #endif
 #include "os/os_dev.h"
 #include "bsp.h"
-#if MYNEWT_VAL(LSM303DLHC_PRESENT)
-#include <lsm303dlhc/lsm303dlhc.h>
-static struct lsm303dlhc lsm303dlhc;
-#endif
-#if MYNEWT_VAL(BNO055_PRESENT)
-#include <bno055/bno055.h>
-#endif
-#if MYNEWT_VAL(TSL2561_PRESENT)
-#include <tsl2561/tsl2561.h>
-#endif
-#if MYNEWT_VAL(TCS34725_PRESENT)
-#include <tcs34725/tcs34725.h>
-#endif
-#if MYNEWT_VAL(BME280_PRESENT)
+
+#if MYNEWT_VAL(BME280_ONB)
 #include <bme280/bme280.h>
-#endif
-
-#if MYNEWT_VAL(LSM303DLHC_PRESENT)
-static struct lsm303dlhc lsm303dlhc;
-#endif
-
-#if MYNEWT_VAL(BNO055_PRESENT)
-static struct bno055 bno055;
-#endif
-
-#if MYNEWT_VAL(TSL2561_PRESENT)
-static struct tsl2561 tsl2561;
-#endif
-
-#if MYNEWT_VAL(TCS34725_PRESENT)
-static struct tcs34725 tcs34725;
-#endif
-
-#if MYNEWT_VAL(BME280_PRESENT)
 static struct bme280 bme280;
 #endif
 
@@ -108,6 +79,14 @@ static const struct nrf52_hal_spi_cfg os_bsp_spi0m_cfg = {
     .mosi_pin     = 25,
     .miso_pin     = 28,
 };
+
+#if MYNEWT_VAL(BME280_ONB)
+static const struct sensor_itf spi_0_itf_bme = {
+    .si_type = SENSOR_ITF_SPI,
+    .si_num = 0,
+    .si_cs_pin = 3
+};
+#endif
 #endif
 
 #if MYNEWT_VAL(SPI_0_SLAVE)
@@ -187,35 +166,41 @@ hal_bsp_get_nvic_priority(int irq_num, uint32_t pri)
     return cfg_pri;
 }
 
-#if MYNEWT_VAL(LSM303DLHC_PRESENT) || MYNEWT_VAL(BNO055_PRESENT)
-static int
-accel_init(struct os_dev *dev, void *arg)
+/**
+ * BME280 Sensor default configuration
+ *
+ * @return 0 on success, non-zero on failure
+ */
+#if MYNEWT_VAL(BME280_ONB)
+int
+config_bme280_sensor(void)
 {
-   return (0);
-}
-#endif
+    int rc;
+    struct os_dev *dev;
+    struct bme280_cfg bmecfg;
 
-#if MYNEWT_VAL(TSL2561_PRESENT)
-static int
-slinky_light_init(struct os_dev *dev, void *arg)
-{
-    return (0);
-}
-#endif
+    dev = (struct os_dev *) os_dev_open("bme280_0", OS_TIMEOUT_NEVER, NULL);
+    assert(dev != NULL);
 
-#if MYNEWT_VAL(TCS34725_PRESENT)
-static int
-color_init(struct os_dev *dev, void *arg)
-{
-    return (0);
-}
-#endif
+    memset(&bmecfg, 0, sizeof(bmecfg));
 
-#if MYNEWT_VAL(BME280_PRESENT)
-static int
-press_init(struct os_dev *dev, void *arg)
-{
-    return (0);
+    bmecfg.bc_mode = BME280_MODE_NORMAL;
+    bmecfg.bc_iir = BME280_FILTER_X16;
+    bmecfg.bc_sby_dur = BME280_STANDBY_MS_0_5;
+    bmecfg.bc_boc[0].boc_type = SENSOR_TYPE_RELATIVE_HUMIDITY;
+    bmecfg.bc_boc[1].boc_type = SENSOR_TYPE_PRESSURE;
+    bmecfg.bc_boc[2].boc_type = SENSOR_TYPE_AMBIENT_TEMPERATURE;
+    bmecfg.bc_boc[0].boc_oversample = BME280_SAMPLING_X1;
+    bmecfg.bc_boc[1].boc_oversample = BME280_SAMPLING_X16;
+    bmecfg.bc_boc[2].boc_oversample = BME280_SAMPLING_X2;
+    bmecfg.bc_s_mask = SENSOR_TYPE_AMBIENT_TEMPERATURE|
+                       SENSOR_TYPE_PRESSURE|
+                       SENSOR_TYPE_RELATIVE_HUMIDITY;
+
+    rc = bme280_config((struct bme280 *)dev, &bmecfg);
+
+    os_dev_close(dev);
+    return rc;
 }
 #endif
 
@@ -223,35 +208,11 @@ static void
 sensor_dev_create(void)
 {
     int rc;
-
     (void)rc;
-#if MYNEWT_VAL(LSM303DLHC_PRESENT)
-    rc = os_dev_create((struct os_dev *) &lsm303dlhc, "accel0",
-      OS_DEV_INIT_PRIMARY, 0, accel_init, NULL);
-    assert(rc == 0);
-#endif
 
-#if MYNEWT_VAL(BNO055_PRESENT)
-    rc = os_dev_create((struct os_dev *) &bno055, "accel1",
-      OS_DEV_INIT_PRIMARY, 0, accel_init, NULL);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(TSL2561_PRESENT)
-    rc = os_dev_create((struct os_dev *) &tsl2561, "light0",
-      OS_DEV_INIT_PRIMARY, 0, light_init, NULL);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(TCS34725_PRESENT)
-    rc = os_dev_create((struct os_dev *) &tcs34725, "color0",
-      OS_DEV_INIT_PRIMARY, 0, color_init, NULL);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(BME280_PRESENT)
-    rc = os_dev_create((struct os_dev *) &bme280, "bme280",
-      OS_DEV_INIT_PRIMARY, 0, press_init, NULL);
+#if MYNEWT_VAL(BME280_ONB)
+    rc = os_dev_create((struct os_dev *) &bme280, "bme280_0",
+      OS_DEV_INIT_PRIMARY, 0, bme280_init, (void *)&spi_0_itf_bme);
     assert(rc == 0);
 #endif
 

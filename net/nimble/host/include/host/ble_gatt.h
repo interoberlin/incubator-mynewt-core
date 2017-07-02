@@ -188,6 +188,8 @@ int ble_gattc_write_reliable(uint16_t conn_handle,
 int ble_gattc_notify_custom(uint16_t conn_handle, uint16_t att_handle,
                             struct os_mbuf *om);
 int ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle);
+int ble_gattc_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
+                              struct os_mbuf *txom);
 int ble_gattc_indicate(uint16_t conn_handle, uint16_t chr_val_handle);
 
 int ble_gattc_init(void);
@@ -456,6 +458,12 @@ int ble_gatts_find_chr(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
                        uint16_t *out_def_handle, uint16_t *out_val_handle);
 int ble_gatts_find_dsc(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
                        const ble_uuid_t *dsc_uuid, uint16_t *out_dsc_handle);
+
+typedef void (*ble_gatt_svc_foreach_fn)(const struct ble_gatt_svc_def *svc,
+                                        uint16_t handle,
+                                        uint16_t end_group_handle);
+void ble_gatts_lcl_svc_foreach(ble_gatt_svc_foreach_fn cb);
+void ble_gatts_show_local(void);
 
 #ifdef __cplusplus
 }

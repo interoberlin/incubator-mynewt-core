@@ -25,6 +25,7 @@
 #include "hal/hal_gpio.h"
 #include "bme280/bme280.h"
 #include "bme280_priv.h"
+#include "parse/parse.h"
 
 #if MYNEWT_VAL(BME280_CLI)
 
@@ -35,22 +36,11 @@ static struct shell_cmd bme280_shell_cmd_struct = {
     .sc_cmd_func = bme280_shell_cmd
 };
 
-static int
-bme280_shell_stol(char *param_val, long min, long max, long *output)
-{
-    char *endptr;
-    long lval;
-
-    lval = strtol(param_val, &endptr, 10); /* Base 10 */
-    if (param_val != '\0' && *endptr == '\0' &&
-        lval >= min && lval <= max) {
-            *output = lval;
-    } else {
-        return EINVAL;
-    }
-
-    return 0;
-}
+static struct sensor_itf g_sensor_itf = {
+    .si_type = MYNEWT_VAL(BME280_SHELL_ITF_TYPE),
+    .si_num = MYNEWT_VAL(BME280_SHELL_ITF_NUM),
+    .si_cs_pin = MYNEWT_VAL(BME280_SHELL_CSPIN)
+};
 
 static int
 bme280_shell_err_too_many_args(char *cmd_name)
@@ -99,7 +89,7 @@ bme280_shell_cmd_read_chipid(int argc, char **argv)
     int rc;
     uint8_t chipid;
 
-    rc = bme280_get_chipid(&chipid);
+    rc = bme280_get_chipid(&g_sensor_itf, &chipid);
     if (rc) {
         goto err;
     }
@@ -114,7 +104,7 @@ err:
 static int
 bme280_shell_cmd_reset(int argc, char **argv)
 {
-    return bme280_reset();
+    return bme280_reset(&g_sensor_itf);
 }
 
 static int
@@ -124,7 +114,7 @@ bme280_shell_cmd_read(int argc, char **argv)
     int32_t press;
     int32_t humid;
     uint16_t samples = 1;
-    long val;
+    uint16_t val;
     int rc;
 
     if (argc > 3) {
@@ -133,27 +123,28 @@ bme280_shell_cmd_read(int argc, char **argv)
 
     /* Check if more than one sample requested */
     if (argc == 3) {
-        if (bme280_shell_stol(argv[2], 1, UINT16_MAX, &val)) {
+        val = parse_ll_bounds(argv[2], 1, UINT16_MAX, &rc);
+        if (rc) {
             return bme280_shell_err_invalid_arg(argv[2]);
         }
-        samples = (uint16_t)val;
+        samples = val;
     }
 
     while(samples--) {
 
-        rc = bme280_get_pressure(&press);
+        rc = bme280_get_pressure(&g_sensor_itf, &press);
         if (rc) {
             console_printf("Read failed: %d\n", rc);
             return rc;
         }
 
-        rc = bme280_get_temperature(&temp);
+        rc = bme280_get_temperature(&g_sensor_itf, &temp);
         if (rc) {
             console_printf("Read failed: %d\n", rc);
             return rc;
         }
 
-        rc = bme280_get_humidity(&humid);
+        rc = bme280_get_humidity(&g_sensor_itf, &humid);
         if (rc) {
             console_printf("Read failed: %d\n", rc);
             return rc;
@@ -169,7 +160,7 @@ bme280_shell_cmd_read(int argc, char **argv)
 static int
 bme280_shell_cmd_oversample(int argc, char **argv)
 {
-    long val;
+    uint8_t val;
     int rc;
     uint8_t oversample;
     uint32_t type;
@@ -180,10 +171,11 @@ bme280_shell_cmd_oversample(int argc, char **argv)
 
     /* Display the oversample */
     if (argc == 3) {
-        if (bme280_shell_stol(argv[2], 4, 8, &val)) {
+        val = parse_ll_bounds(argv[2], 4, 8, &rc);
+        if (rc) {
             return bme280_shell_err_invalid_arg(argv[2]);
         }
-        rc = bme280_get_oversample(val, &oversample);
+        rc = bme280_get_oversample(&g_sensor_itf, val, &oversample);
         if (rc) {
             goto err;
         }
@@ -192,19 +184,21 @@ bme280_shell_cmd_oversample(int argc, char **argv)
 
     /* Update the oversampling  */
     if (argc == 4) {
-        if (bme280_shell_stol(argv[2], 4, 8, &val)) {
+        val = parse_ll_bounds(argv[2], 4, 8, &rc);
+        if (rc) {
             return bme280_shell_err_invalid_arg(argv[2]);
         }
 
         type = val;
 
-        if (bme280_shell_stol(argv[3], 0, 5, &val)) {
-            return bme280_shell_err_invalid_arg(argv[2]);
+        val = parse_ll_bounds(argv[3], 0, 5, &rc);
+        if (rc) {
+            return bme280_shell_err_invalid_arg(argv[3]);
         }
 
         oversample = val;
 
-        rc = bme280_set_oversample(type, oversample);
+        rc = bme280_set_oversample(&g_sensor_itf, type, oversample);
         if (rc) {
             goto err;
         }
@@ -219,7 +213,7 @@ static int
 bme280_shell_cmd_mode(int argc, char **argv)
 {
     uint8_t mode;
-    long val;
+    uint8_t val;
     int rc;
 
     if (argc > 3) {
@@ -227,7 +221,7 @@ bme280_shell_cmd_mode(int argc, char **argv)
     }
 
     if (argc == 2) {
-        rc = bme280_get_mode(&mode);
+        rc = bme280_get_mode(&g_sensor_itf, &mode);
         if (rc) {
             goto err;
         }
@@ -236,10 +230,11 @@ bme280_shell_cmd_mode(int argc, char **argv)
 
     /* Change mode */
     if (argc == 3) {
-        if (bme280_shell_stol(argv[2], 0, 3, &val)) {
+        val = parse_ll_bounds(argv[2], 0, 3, &rc);
+        if (rc) {
             return bme280_shell_err_invalid_arg(argv[2]);
         }
-        rc = bme280_set_mode(val);
+        rc = bme280_set_mode(&g_sensor_itf, val);
         if (rc) {
             goto err;
         }
@@ -254,7 +249,7 @@ static int
 bme280_shell_cmd_iir(int argc, char **argv)
 {
     uint8_t iir;
-    long val;
+    uint8_t val;
     int rc;
 
     if (argc > 3) {
@@ -263,7 +258,7 @@ bme280_shell_cmd_iir(int argc, char **argv)
 
     /* Display if iir enabled */
     if (argc == 2) {
-        rc = bme280_get_iir(&iir);
+        rc = bme280_get_iir(&g_sensor_itf, &iir);
         if (rc) {
             goto err;
         }
@@ -272,10 +267,11 @@ bme280_shell_cmd_iir(int argc, char **argv)
 
     /* Enable/disable iir*/
     if (argc == 3) {
-        if (bme280_shell_stol(argv[2], 0, 1, &val)) {
+        val = parse_ll_bounds(argv[2], 0, 1, &rc);
+        if (rc) {
             return bme280_shell_err_invalid_arg(argv[2]);
         }
-        rc = bme280_set_iir(val);
+        rc = bme280_set_iir(&g_sensor_itf, val);
         if (rc) {
             goto err;
         }
@@ -297,59 +293,59 @@ bme280_shell_cmd_dump(int argc, char **argv)
 
   /* Dump all the register values for debug purposes */
   val = 0;
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_T1, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_T1, &val, 1));
   console_printf("0x%02X (DIG_T1): 0x%02X\n", BME280_REG_ADDR_DIG_T1, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_T2, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_T2, &val, 1));
   console_printf("0x%02X (DIG_T2):  0x%02X\n", BME280_REG_ADDR_DIG_T2, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_T3, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_T3, &val, 1));
   console_printf("0x%02X (DIG_T3):   0x%02X\n", BME280_REG_ADDR_DIG_T3, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P1, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P1, &val, 1));
   console_printf("0x%02X (DIG_P1): 0x%02X\n", BME280_REG_ADDR_DIG_P1, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P2, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P2, &val, 1));
   console_printf("0x%02X (DIG_P2):  0x%02X\n", BME280_REG_ADDR_DIG_P2, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P3, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P3, &val, 1));
   console_printf("0x%02X (DIG_P3):   0x%02X\n", BME280_REG_ADDR_DIG_P3, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P4, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P4, &val, 1));
   console_printf("0x%02X (DIG_P4): 0x%02X\n", BME280_REG_ADDR_DIG_P4, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P5, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P5, &val, 1));
   console_printf("0x%02X (DIG_P5):  0x%02X\n", BME280_REG_ADDR_DIG_P5, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P6, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P6, &val, 1));
   console_printf("0x%02X (DIG_P6):   0x%02X\n", BME280_REG_ADDR_DIG_P6, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P7, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P7, &val, 1));
   console_printf("0x%02X (DIG_P7): 0x%02X\n", BME280_REG_ADDR_DIG_P7, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P8, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P8, &val, 1));
   console_printf("0x%02X (DIG_P8):  0x%02X\n", BME280_REG_ADDR_DIG_P8, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_P9, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_P9, &val, 1));
   console_printf("0x%02X (DIG_P9):   0x%02X\n", BME280_REG_ADDR_DIG_P9, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H1, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H1, &val, 1));
   console_printf("0x%02X (DIG_H1): 0x%02X\n", BME280_REG_ADDR_DIG_H1, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H2, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H2, &val, 1));
   console_printf("0x%02X (DIG_H2):  0x%02X\n", BME280_REG_ADDR_DIG_H2, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H3, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H3, &val, 1));
   console_printf("0x%02X (DIG_H3):   0x%02X\n", BME280_REG_ADDR_DIG_H3, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H4, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H4, &val, 1));
   console_printf("0x%02X (DIG_H4): 0x%02X\n", BME280_REG_ADDR_DIG_H4, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H5, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H5, &val, 1));
   console_printf("0x%02X (DIG_H5):  0x%02X\n", BME280_REG_ADDR_DIG_H5, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_DIG_H6, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_DIG_H6, &val, 1));
   console_printf("0x%02X (DIG_H6):   0x%02X\n", BME280_REG_ADDR_DIG_H6, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_CHIPID, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_CHIPID, &val, 1));
   console_printf("0x%02X (CHIPID):   0x%02X\n", BME280_REG_ADDR_CHIPID, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_VERSION, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_VERSION, &val, 1));
   console_printf("0x%02X (VER):   0x%02X\n", BME280_REG_ADDR_VERSION, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_CTRL_HUM, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_CTRL_HUM, &val, 1));
   console_printf("0x%02X (CTRL_HUM):   0x%02X\n", BME280_REG_ADDR_CTRL_HUM, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_STATUS, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_STATUS, &val, 1));
   console_printf("0x%02X (STATUS):   0x%02X\n", BME280_REG_ADDR_STATUS, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_CTRL_MEAS, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_CTRL_MEAS, &val, 1));
   console_printf("0x%02X (CTRL_MEAS):   0x%02X\n", BME280_REG_ADDR_CTRL_MEAS, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_CONFIG, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_CONFIG, &val, 1));
   console_printf("0x%02X (CONFIG):   0x%02X\n", BME280_REG_ADDR_CONFIG, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_PRESS, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_PRESS, &val, 1));
   console_printf("0x%02X (PRESS):   0x%02X\n", BME280_REG_ADDR_PRESS, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_TEMP, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_TEMP, &val, 1));
   console_printf("0x%02X (TEMP):   0x%02X\n", BME280_REG_ADDR_TEMP, val);
-  assert(0 == bme280_readlen(BME280_REG_ADDR_HUM, &val, 1));
+  assert(0 == bme280_readlen(&g_sensor_itf, BME280_REG_ADDR_HUM, &val, 1));
   console_printf("0x%02X (HUM):   0x%02X\n", BME280_REG_ADDR_HUM, val);
 
   return 0;

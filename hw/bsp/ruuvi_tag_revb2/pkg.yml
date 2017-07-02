@@ -95,3 +95,9 @@ pkg.deps.UART_0:
 
 pkg.deps.UART_1:
     - hw/drivers/uart/uart_bitbang
+
+pkg.deps.BME280_ONB:
+    - hw/drivers/sensors/bme280
+
+pkg.init:
+    config_bme280_sensor: 400
