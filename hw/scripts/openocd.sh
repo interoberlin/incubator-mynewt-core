@@ -17,6 +17,9 @@
 #
 . $CORE_PATH/hw/scripts/common.sh
 
+CFG_RESET="reset halt"
+GDB=arm-none-eabi-gdb
+
 #
 # FILE_NAME must contain the name of the file to load
 # FLASH_OFFSET must contain the offset in flash where to place it
@@ -26,7 +29,7 @@ openocd_load () {
 
     echo "$EXTRA_JTAG_CMD" > $OCD_CMD_FILE
     echo "init" >> $OCD_CMD_FILE
-    echo "reset halt" >> $OCD_CMD_FILE
+    echo "$CFG_RESET" >> $OCD_CMD_FILE
     echo "$CFG_POST_INIT" >> $OCD_CMD_FILE
     echo "flash write_image erase $FILE_NAME $FLASH_OFFSET" >> $OCD_CMD_FILE
 
@@ -91,7 +94,8 @@ openocd_debug () {
             # Block Ctrl-C from getting passed to openocd.
             #
             set -m
-            openocd $CFG -f $OCD_CMD_FILE -c init -c halt &
+            openocd $CFG -f $OCD_CMD_FILE -c init -c halt >openocd.log 2>&1 &
+            openocdpid=$!
             set +m
         fi
 
@@ -101,14 +105,22 @@ openocd_debug () {
         if [ ! -z "$RESET" ]; then
             echo "mon reset halt" >> $GDB_CMD_FILE
         fi
-	echo "FILENAME" $FILE_NAME >>out
-	if [ $WINDOWS -eq 1 ]; then
-	    FILE_NAME=`echo $FILE_NAME | sed 's/\//\\\\/g'`
-            $COMSPEC /C "start $COMSPEC /C arm-none-eabi-gdb -x $GDB_CMD_FILE $FILE_NAME"
-	else
-            arm-none-eabi-gdb -x $GDB_CMD_FILE $FILE_NAME
+
+        echo "$EXTRA_GDB_CMDS" >> $GDB_CMD_FILE
+
+        if [ $WINDOWS -eq 1 ]; then
+            FILE_NAME=`echo $FILE_NAME | sed 's/\//\\\\/g'`
+            $COMSPEC /C "start $COMSPEC /C $GDB -x $GDB_CMD_FILE $FILE_NAME"
+        else
+            set -m
+            $GDB -x $GDB_CMD_FILE $FILE_NAME
+            set +m
             rm $GDB_CMD_FILE
-	fi
+            sleep 1
+            if [ -d /proc/$openocdpid ] ; then
+                kill -9 $openocdpid
+            fi
+        fi
     else
         # No GDB, wait for openocd to exit
         openocd $CFG -f $OCD_CMD_FILE -c init -c halt

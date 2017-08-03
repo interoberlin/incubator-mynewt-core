@@ -890,11 +890,89 @@ bletiny_on_write_reliable(uint16_t conn_handle,
     return 0;
 }
 
+static void
+bletiny_decode_adv_data(uint8_t *adv_data, uint8_t adv_data_len)
+{
+    struct ble_hs_adv_fields fields;
+
+    console_printf(" length_data=%d data=", adv_data_len);
+    print_bytes(adv_data, adv_data_len);
+    console_printf(" fields:\n");
+    ble_hs_adv_parse_fields(&fields, adv_data, adv_data_len);
+    bletiny_print_adv_fields(&fields);
+    console_printf("\n");
+}
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+static void
+bletiny_decode_event_type(struct ble_gap_ext_disc_desc *desc)
+{
+    uint8_t directed = 0;
+
+    if (desc->props & BLE_HCI_ADV_LEGACY_MASK) {
+        console_printf("Legacy PDU type %d", desc->legacy_event_type);
+        if (desc->legacy_event_type == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND) {
+            directed = 1;
+        }
+        goto common_data;
+    }
+
+    console_printf("Extended adv: ");
+    if (desc->props & BLE_HCI_ADV_CONN_MASK) {
+        console_printf("'conn' ");
+    }
+    if (desc->props & BLE_HCI_ADV_SCAN_MASK) {
+        console_printf("'scan' ");
+    }
+    if (desc->props & BLE_HCI_ADV_DIRECT_MASK) {
+        console_printf("'dir' ");
+        directed = 1;
+    }
+
+    if (desc->props & BLE_HCI_ADV_SCAN_RSP_MASK) {
+        console_printf("'scan rsp' ");
+    }
+
+    switch(desc->data_status) {
+    case BLE_HCI_ADV_COMPLETED:
+        console_printf("completed");
+        break;
+    case BLE_HCI_ADV_INCOMPLETE:
+        console_printf("incompleted");
+        break;
+    case BLE_HCI_ADV_CORRUPTED:
+        console_printf("corrupted");
+        break;
+    default:
+        console_printf("reserved %d", desc->data_status);
+        break;
+    }
+
+common_data:
+    console_printf(" rssi=%d txpower=%d, pphy=%d, sphy=%d, sid=%d,"
+                   " addr_type=%d addr=",
+                   desc->rssi, desc->tx_power, desc->prim_phy, desc->sec_phy,
+                   desc->sid, desc->addr.type);
+    print_addr(desc->addr.val);
+    if (directed) {
+        console_printf(" init_addr_type=%d inita=", desc->direct_addr.type);
+        print_addr(desc->direct_addr.val);
+    }
+
+    console_printf("\n");
+
+    if(!desc->length_data) {
+        return;
+    }
+
+    bletiny_decode_adv_data(desc->data, desc->length_data);
+}
+#endif
+
 static int
 bletiny_gap_event(struct ble_gap_event *event, void *arg)
 {
     struct ble_gap_conn_desc desc;
-    struct ble_hs_adv_fields fields;
     int conn_idx;
     int rc;
 
@@ -921,7 +999,11 @@ bletiny_gap_event(struct ble_gap_event *event, void *arg)
             bletiny_conn_delete_idx(conn_idx);
         }
         return 0;
-
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    case BLE_GAP_EVENT_EXT_DISC:
+        bletiny_decode_event_type(&event->ext_disc);
+        return 0;
+#endif
     case BLE_GAP_EVENT_DISC:
         console_printf("received advertisement; event_type=%d rssi=%d "
                        "addr_type=%d addr=", event->disc.event_type,
@@ -932,20 +1014,13 @@ bletiny_gap_event(struct ble_gap_event *event, void *arg)
          * There is no adv data to print in case of connectable
          * directed advertising
          */
-        if (event->disc.event_type == BLE_HCI_ADV_TYPE_ADV_DIRECT_IND_HD ||
-                event->disc.event_type == BLE_HCI_ADV_TYPE_ADV_DIRECT_IND_LD) {
+        if (event->disc.event_type == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND) {
                 console_printf("\nConnectable directed advertising event\n");
                 return 0;
         }
 
-        console_printf(" length_data=%d data=",
-                               event->disc.length_data);
-        print_bytes(event->disc.data, event->disc.length_data);
-        console_printf(" fields:\n");
-        ble_hs_adv_parse_fields(&fields, event->disc.data,
-                                event->disc.length_data);
-        bletiny_print_adv_fields(&fields);
-        console_printf("\n");
+        bletiny_decode_adv_data(event->disc.data, event->disc.length_data);
+
         return 0;
 
     case BLE_GAP_EVENT_DISC_COMPLETE:
@@ -1036,6 +1111,30 @@ bletiny_gap_event(struct ble_gap_event *event, void *arg)
         assert(rc == 0);
         print_conn_desc(&desc);
         return 0;
+    case BLE_GAP_EVENT_PHY_UPDATE_COMPLETE:
+        console_printf("PHY update complete; status=%d, conn_handle=%d "
+                       " tx_phy=%d, rx_phy=%d\n",
+                       event->phy_updated.status,
+                       event->phy_updated.conn_handle,
+                       event->phy_updated.tx_phy,
+                       event->phy_updated.rx_phy);
+        return 0;
+
+    case BLE_GAP_EVENT_REPEAT_PAIRING:
+        /* We already have a bond with the peer, but it is attempting to
+         * establish a new secure link.  This app sacrifices security for
+         * convenience: just throw away the old bond and accept the new link.
+         */
+
+        /* Delete the old bond. */
+        rc = ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
+        assert(rc == 0);
+        ble_store_util_delete_peer(&desc.peer_id_addr);
+
+        /* Return BLE_GAP_REPEAT_PAIRING_RETRY to indicate that the host should
+         * continue with the pairing operation.
+         */
+        return BLE_GAP_REPEAT_PAIRING_RETRY;
 
     default:
         return 0;
@@ -1342,6 +1441,41 @@ bletiny_conn_initiate(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 }
 
 int
+bletiny_ext_conn_initiate(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                          int32_t duration_ms,
+                          struct ble_gap_conn_params *phy_1m_params,
+                          struct ble_gap_conn_params *phy_2m_params,
+                          struct ble_gap_conn_params *phy_coded_params)
+{
+#if MYNEWT_VAL(BLE_EXT_ADV) == 0
+    console_printf("BLE extended advertising not supported.");
+    console_printf(" Configure nimble host to enable it\n");
+    return 0;
+#else
+    int rc;
+    uint8_t phy_mask = 0;
+
+    if (phy_1m_params) {
+        phy_mask |= BLE_GAP_LE_PHY_1M_MASK;
+    }
+
+    if (phy_2m_params) {
+        phy_mask |= BLE_GAP_LE_PHY_2M_MASK;
+    }
+
+    if (phy_coded_params) {
+        phy_mask |= BLE_GAP_LE_PHY_CODED_MASK;
+    }
+
+    rc = ble_gap_ext_connect(own_addr_type, peer_addr, duration_ms, phy_mask,
+                             phy_1m_params, phy_2m_params, phy_coded_params,
+                             bletiny_gap_event, NULL);
+
+    return rc;
+#endif
+}
+
+int
 bletiny_conn_cancel(void)
 {
     int rc;
@@ -1377,6 +1511,27 @@ bletiny_scan(uint8_t own_addr_type, int32_t duration_ms,
     rc = ble_gap_disc(own_addr_type, duration_ms, disc_params,
                       bletiny_gap_event, NULL);
     return rc;
+}
+
+int
+bletiny_ext_scan(uint8_t own_addr_type, uint16_t duration, uint16_t period,
+                 uint8_t filter_duplicates, uint8_t filter_policy,
+                 uint8_t limited,
+                 const struct ble_gap_ext_disc_params *uncoded_params,
+                 const struct ble_gap_ext_disc_params *coded_params)
+{
+#if MYNEWT_VAL(BLE_EXT_ADV) == 0
+    console_printf("BLE extended advertising not supported.");
+    console_printf(" Configure nimble host to enable it\n");
+    return 0;
+#else
+    int rc;
+
+    rc = ble_gap_ext_disc(own_addr_type, duration, period, filter_duplicates,
+                          filter_policy, limited, uncoded_params, coded_params,
+                          bletiny_gap_event, NULL);
+    return rc;
+#endif
 }
 
 int
@@ -1923,6 +2078,7 @@ main(int argc, char **argv)
                  LOG_SYSLEVEL);
     ble_hs_cfg.reset_cb = bletiny_on_reset;
     ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
     rc = gatt_svr_init();
     assert(rc == 0);

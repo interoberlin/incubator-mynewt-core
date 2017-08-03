@@ -33,14 +33,12 @@
 
 /* Exports for the sensor interface.
  */
-static void *sim_mag_sensor_get_interface(struct sensor *, sensor_type_t);
 static int sim_mag_sensor_read(struct sensor *, sensor_type_t,
         sensor_data_func_t, void *, uint32_t);
 static int sim_mag_sensor_get_config(struct sensor *, sensor_type_t,
         struct sensor_cfg *);
 
 static const struct sensor_driver g_sim_mag_sensor_driver = {
-    sim_mag_sensor_get_interface,
     sim_mag_sensor_read,
     sim_mag_sensor_get_config
 };
@@ -94,13 +92,6 @@ sim_mag_config(struct sim_mag *sm, struct sim_mag_cfg *cfg)
     return (0);
 }
 
-static void *
-sim_mag_sensor_get_interface(struct sensor *sensor, sensor_type_t type)
-{
-    return (NULL);
-}
-
-
 static int
 sim_mag_sensor_read(struct sensor *sensor, sensor_type_t type,
         sensor_data_func_t data_func, void *data_arg, uint32_t timeout)
@@ -151,7 +142,7 @@ sim_mag_sensor_read(struct sensor *sensor, sensor_type_t type,
 
     /* Call data function for each of the generated readings. */
     for (i = 0; i < num_samples; i++) {
-        rc = data_func(sensor, data_arg, &smd);
+        rc = data_func(sensor, data_arg, &smd, SENSOR_TYPE_MAGNETIC_FIELD);
         if (rc != 0) {
             goto err;
         }

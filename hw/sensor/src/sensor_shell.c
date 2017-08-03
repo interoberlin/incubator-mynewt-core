@@ -40,10 +40,12 @@
 #include "sensor/temperature.h"
 #include "sensor/pressure.h"
 #include "sensor/humidity.h"
+#include "sensor/gyro.h"
 #include "console/console.h"
 #include "shell/shell.h"
 #include "hal/hal_i2c.h"
 #include "os/os_cputime.h"
+#include "parse/parse.h"
 
 static int sensor_cmd_exec(int, char **);
 static struct shell_cmd shell_sensor_cmd = {
@@ -62,6 +64,10 @@ struct sensor_poll_data {
     int spd_poll_delay;
 };
 
+struct sensor_shell_read_ctx {
+    int num_entries;
+};
+
 static void
 sensor_display_help(void)
 {
@@ -70,9 +76,7 @@ sensor_display_help(void)
     console_printf("      list of sensors registered\n");
     console_printf("  read <sensor_name> <type> [-n nsamples] [-i poll_itvl(ms)] [-d poll_duration(ms)]\n");
     console_printf("      read <no_of_samples> from sensor<sensor_name> of type:<type> at preset interval or \n");
-    console_printf("      at <poll_interval> rate for <poll_duration>");
-    console_printf("  i2cscan <I2C num>\n");
-    console_printf("      scan I2C bus for connected devices\n");
+    console_printf("      at <poll_interval> rate for <poll_duration>\n");
     console_printf("  type <sensor_name>\n");
     console_printf("      types supported by registered sensor\n");
 }
@@ -80,16 +84,17 @@ sensor_display_help(void)
 static void
 sensor_cmd_display_sensor(struct sensor *sensor)
 {
-    int type;
     int i;
+    sensor_type_t type;
 
-    console_printf("sensor dev = %s, type = ", sensor->s_dev->od_name);
+    console_printf("sensor dev = %s, configured type = ", sensor->s_dev->od_name);
+    type = 0x1;
 
     for (i = 0; i < 32; i++) {
-        type = (0x1 << i) & sensor->s_types;
-        if (type) {
-            console_printf("0x%x ", type);
+        if (sensor_mgr_match_bytype(sensor, (void *)&type)) {
+            console_printf("0x%x ", (unsigned int)type);
         }
+        type <<= 1;
     }
 
     console_printf("\n");
@@ -177,6 +182,18 @@ sensor_cmd_display_type(char **argv)
             case SENSOR_TYPE_USER_DEFINED_2:
                 console_printf("    user defined 2: 0x%x\n", type);
                 break;
+            case SENSOR_TYPE_USER_DEFINED_3:
+                console_printf("    user defined 3: 0x%x\n", type);
+                break;
+            case SENSOR_TYPE_USER_DEFINED_4:
+                console_printf("    user defined 4: 0x%x\n", type);
+                break;
+            case SENSOR_TYPE_USER_DEFINED_5:
+                console_printf("    user defined 5: 0x%x\n", type);
+                break;
+            case SENSOR_TYPE_USER_DEFINED_6:
+                console_printf("    user defined 6: 0x%x\n", type);
+                break;
             default:
                 console_printf("    unknown type: 0x%x\n", type);
                 break;
@@ -208,11 +225,6 @@ sensor_cmd_list_sensors(void)
     sensor_mgr_unlock();
 }
 
-struct sensor_shell_read_ctx {
-    sensor_type_t type;
-    int num_entries;
-};
-
 char*
 sensor_ftostr(float num, char *fltstr, int len)
 {
@@ -224,7 +236,8 @@ sensor_ftostr(float num, char *fltstr, int len)
 }
 
 static int
-sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
+sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data,
+                           sensor_type_t type)
 {
     struct sensor_shell_read_ctx *ctx;
     struct sensor_accel_data *sad;
@@ -236,6 +249,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
     struct sensor_temp_data *std;
     struct sensor_press_data *spd;
     struct sensor_humid_data *shd;
+    struct sensor_gyro_data *sgd;
     char tmpstr[13];
 
     ctx = (struct sensor_shell_read_ctx *) arg;
@@ -247,9 +261,9 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
                    (int)sensor->s_sts.st_ostv.tv_usec,
                    (unsigned int)sensor->s_sts.st_cputime);
 
-    if (ctx->type == SENSOR_TYPE_ACCELEROMETER ||
-        ctx->type == SENSOR_TYPE_LINEAR_ACCEL  ||
-        ctx->type == SENSOR_TYPE_GRAVITY) {
+    if (type == SENSOR_TYPE_ACCELEROMETER ||
+        type == SENSOR_TYPE_LINEAR_ACCEL  ||
+        type == SENSOR_TYPE_GRAVITY) {
 
         sad = (struct sensor_accel_data *) data;
         if (sad->sad_x_is_valid) {
@@ -264,7 +278,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_MAGNETIC_FIELD) {
+    if (type == SENSOR_TYPE_MAGNETIC_FIELD) {
         smd = (struct sensor_mag_data *) data;
         if (smd->smd_x_is_valid) {
             console_printf("x = %s ", sensor_ftostr(smd->smd_x, tmpstr, 13));
@@ -278,7 +292,21 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_LIGHT) {
+    if (type == SENSOR_TYPE_GYROSCOPE) {
+        sgd = (struct sensor_gyro_data *) data;
+        if (sgd->sgd_x_is_valid) {
+            console_printf("x = %s ", sensor_ftostr(sgd->sgd_x, tmpstr, 13));
+        }
+        if (sgd->sgd_y_is_valid) {
+            console_printf("y = %s ", sensor_ftostr(sgd->sgd_y, tmpstr, 13));
+        }
+        if (sgd->sgd_z_is_valid) {
+            console_printf("z = %s ", sensor_ftostr(sgd->sgd_z, tmpstr, 13));
+        }
+        console_printf("\n");
+    }
+
+    if (type == SENSOR_TYPE_LIGHT) {
         sld = (struct sensor_light_data *) data;
         if (sld->sld_full_is_valid) {
             console_printf("Full = %u, ", sld->sld_full);
@@ -292,8 +320,8 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_TEMPERATURE      ||
-        ctx->type == SENSOR_TYPE_AMBIENT_TEMPERATURE) {
+    if (type == SENSOR_TYPE_TEMPERATURE      ||
+        type == SENSOR_TYPE_AMBIENT_TEMPERATURE) {
 
         std = (struct sensor_temp_data *) data;
         if (std->std_temp_is_valid) {
@@ -302,7 +330,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_EULER) {
+    if (type == SENSOR_TYPE_EULER) {
         sed = (struct sensor_euler_data *) data;
         if (sed->sed_h_is_valid) {
             console_printf("h = %s", sensor_ftostr(sed->sed_h, tmpstr, 13));
@@ -316,7 +344,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_ROTATION_VECTOR) {
+    if (type == SENSOR_TYPE_ROTATION_VECTOR) {
         sqd = (struct sensor_quat_data *) data;
         if (sqd->sqd_x_is_valid) {
             console_printf("x = %s ", sensor_ftostr(sqd->sqd_x, tmpstr, 13));
@@ -333,7 +361,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_COLOR) {
+    if (type == SENSOR_TYPE_COLOR) {
         scd = (struct sensor_color_data *) data;
         if (scd->scd_r_is_valid) {
             console_printf("r = %u, ", scd->scd_r);
@@ -375,7 +403,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_PRESSURE) {
+    if (type == SENSOR_TYPE_PRESSURE) {
         spd = (struct sensor_press_data *) data;
         if (spd->spd_press_is_valid) {
             console_printf("pressure = %s Pa",
@@ -384,7 +412,7 @@ sensor_shell_read_listener(struct sensor *sensor, void *arg, void *data)
         console_printf("\n");
     }
 
-    if (ctx->type == SENSOR_TYPE_RELATIVE_HUMIDITY) {
+    if (type == SENSOR_TYPE_RELATIVE_HUMIDITY) {
         shd = (struct sensor_humid_data *) data;
         if (shd->shd_humid_is_valid) {
             console_printf("relative humidity = %s%%rh",
@@ -510,8 +538,6 @@ sensor_cmd_read(char *name, sensor_type_t type, struct sensor_poll_data *spd)
         return rc;
     }
 
-    ctx.type = type;
-
     listener.sl_sensor_type = type;
     listener.sl_func = sensor_shell_read_listener;
     listener.sl_arg = &ctx;
@@ -570,73 +596,6 @@ err:
     return rc;
 }
 
-int
-sensor_shell_stol(char *param_val, long min, long max, long *output)
-{
-    char *endptr;
-    long lval;
-
-    lval = strtol(param_val, &endptr, 10); /* Base 10 */
-    if (param_val != '\0' && *endptr == '\0' &&
-        lval >= min && lval <= max) {
-            *output = lval;
-    } else {
-        return EINVAL;
-    }
-
-    return 0;
-}
-
-static int
-sensor_cmd_i2cscan(int argc, char **argv)
-{
-    uint8_t addr;
-    int32_t timeout;
-    uint8_t dev_count = 0;
-    long i2cnum;
-    int rc;
-
-    timeout = OS_TICKS_PER_SEC / 10;
-
-    rc = 0;
-    if (sensor_shell_stol(argv[2], 0, 0xf, &i2cnum)) {
-        console_printf("Invalid i2c interface:%s\n", argv[2]);
-        rc = SYS_EINVAL;
-        goto err;
-    }
-
-    console_printf("Scanning I2C bus %u\n"
-                   "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n"
-                   "00:          ", (uint8_t)i2cnum);
-
-
-    /* Scan all valid I2C addresses (0x08..0x77) */
-    for (addr = 0x08; addr < 0x78; addr++) {
-#ifndef ARCH_sim
-        rc = hal_i2c_master_probe((uint8_t)i2cnum, addr, timeout);
-#else
-        (void)timeout;
-#endif
-        /* Print addr header every 16 bytes */
-        if (!(addr % 16)) {
-            console_printf("\n%02x: ", addr);
-        }
-        /* Display the addr if a response was received */
-        if (!rc) {
-            console_printf("%02x ", addr);
-            dev_count++;
-        } else {
-            console_printf("-- ");
-        }
-        os_time_delay(OS_TICKS_PER_SEC/1000 * 20);
-    }
-    console_printf("\nFound %u devices on I2C bus %u\n", dev_count, (uint8_t)i2cnum);
-
-    return 0;
-err:
-    return rc;
-}
-
 static int
 sensor_cmd_exec(int argc, char **argv)
 {
@@ -680,11 +639,6 @@ sensor_cmd_exec(int argc, char **argv)
         }
 
         rc = sensor_cmd_read(argv[2], (sensor_type_t) strtol(argv[3], NULL, 0), &spd);
-        if (rc) {
-            goto err;
-        }
-    } else if (!strcmp(argv[1], "i2cscan")) {
-        rc = sensor_cmd_i2cscan(argc, argv);
         if (rc) {
             goto err;
         }

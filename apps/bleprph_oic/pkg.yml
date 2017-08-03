@@ -18,11 +18,12 @@
 pkg.name: apps/bleprph_oic
 pkg.type: app
 pkg.description: Simple BLE peripheral application.
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
 
 pkg.deps: 
+    - boot/bootutil
     - kernel/os 
     - net/nimble/controller
     - net/nimble/host
@@ -32,7 +33,7 @@ pkg.deps:
     - net/nimble/transport/ram
     - sys/console/full
     - sys/log/full
-    - sys/stats/stub
+    - sys/stats/full
     - mgmt/oicmgr
     - sys/sysinit
     - sys/shell

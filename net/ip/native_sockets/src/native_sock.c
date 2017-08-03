@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/un.h>
 #include <stdio.h>
 
 #include <sysinit/sysinit.h>
@@ -32,14 +33,9 @@
 #include <os/os_mbuf.h>
 #include "mn_socket/mn_socket.h"
 #include "mn_socket/mn_socket_ops.h"
+#include "native_sockets/native_sock.h"
 
 #include "native_sock_priv.h"
-
-#define NATIVE_SOCK_MAX 8
-#define NATIVE_SOCK_MAX_UDP 2048
-#define NATIVE_SOCK_POLL_ITVL (OS_TICKS_PER_SEC / 5)
-#define SOCK_STACK_SZ   4096
-#define SOCK_PRIO       2
 
 static int native_sock_create(struct mn_socket **sp, uint8_t domain,
   uint8_t type, uint8_t proto);
@@ -69,10 +65,10 @@ static struct native_sock {
     struct os_sem ns_sem;
     STAILQ_HEAD(, os_mbuf_pkthdr) ns_rx;
     struct os_mbuf *ns_tx;
-} native_socks[NATIVE_SOCK_MAX];
+} native_socks[MYNEWT_VAL(NATIVE_SOCKETS_MAX)];
 
 static struct native_sock_state {
-    struct pollfd poll_fds[NATIVE_SOCK_MAX];
+    struct pollfd poll_fds[MYNEWT_VAL(NATIVE_SOCKETS_MAX)];
     int poll_fd_cnt;
     struct os_mutex mtx;
     struct os_task task;
@@ -105,7 +101,7 @@ native_get_sock(void)
     int i;
     struct native_sock *ns;
 
-    for (i = 0; i < NATIVE_SOCK_MAX; i++) {
+    for (i = 0; i < MYNEWT_VAL(NATIVE_SOCKETS_MAX); i++) {
         if (native_socks[i].ns_fd < 0) {
             ns = &native_socks[i];
             ns->ns_poll = 0;
@@ -121,7 +117,7 @@ native_find_sock(int fd)
 {
     int i;
 
-    for (i = 0; i < NATIVE_SOCK_MAX; i++) {
+    for (i = 0; i < MYNEWT_VAL(NATIVE_SOCKETS_MAX); i++) {
         if (native_socks[i].ns_fd == fd) {
             return &native_socks[i];
         }
@@ -137,7 +133,7 @@ native_sock_poll_rebuild(struct native_sock_state *nss)
     int j;
 
     os_mutex_pend(&nss->mtx, OS_WAIT_FOREVER);
-    for (i = 0, j = 0; i < NATIVE_SOCK_MAX; i++) {
+    for (i = 0, j = 0; i < MYNEWT_VAL(NATIVE_SOCKETS_MAX); i++) {
         ns = &native_socks[i];
         if (ns->ns_fd < 0) {
             continue;
@@ -182,8 +178,10 @@ static int
 native_sock_mn_addr_to_addr(struct mn_sockaddr *ms, struct sockaddr *sa,
   int *sa_len)
 {
+    struct sockaddr_un *sun = (struct sockaddr_un *)sa;
     struct sockaddr_in *sin = (struct sockaddr_in *)sa;
     struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sa;
+    struct mn_sockaddr_un *msun = (struct mn_sockaddr_un *)ms;
     struct mn_sockaddr_in *msin = (struct mn_sockaddr_in *)ms;
     struct mn_sockaddr_in6 *msin6 = (struct mn_sockaddr_in6 *)ms;
 
@@ -204,9 +202,23 @@ native_sock_mn_addr_to_addr(struct mn_sockaddr *ms, struct sockaddr *sa,
 #endif
         sin6->sin6_port = msin6->msin6_port;
         sin6->sin6_flowinfo = msin6->msin6_flowinfo;
-        memcpy(&sin6->sin6_addr, &msin6->msin6_addr, sizeof(msin6->msin6_addr));
+        memcpy(&sin6->sin6_addr, &msin6->msin6_addr,
+               sizeof(msin6->msin6_addr));
         sin6->sin6_scope_id = msin6->msin6_scope_id;
         *sa_len = sizeof(*sin6);
+        break;
+    case MN_AF_LOCAL:
+        sun->sun_family = AF_LOCAL;
+#ifndef MN_LINUX
+        sun->sun_len = sizeof(*sun);
+#endif
+        sun->sun_path[0] = '\0';
+        strncat(sun->sun_path, msun->msun_path, sizeof sun->sun_path);
+        if (strcmp(sun->sun_path, msun->msun_path) != 0) {
+            /* Path too long. */
+            return MN_EINVAL;
+        }
+        *sa_len = sizeof(*sun);
         break;
     default:
         return MN_EPROTONOSUPPORT;
@@ -217,8 +229,10 @@ native_sock_mn_addr_to_addr(struct mn_sockaddr *ms, struct sockaddr *sa,
 static int
 native_sock_addr_to_mn_addr(struct sockaddr *sa, struct mn_sockaddr *ms)
 {
+    struct mn_sockaddr_un *msun = (struct mn_sockaddr_un *)ms;
     struct mn_sockaddr_in *msin = (struct mn_sockaddr_in *)ms;
     struct mn_sockaddr_in6 *msin6 = (struct mn_sockaddr_in6 *)ms;
+    struct sockaddr_un *sun = (struct sockaddr_un *)sa;
     struct sockaddr_in *sin = (struct sockaddr_in *)sa;
     struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)sa;
 
@@ -234,8 +248,17 @@ native_sock_addr_to_mn_addr(struct sockaddr *sa, struct mn_sockaddr *ms)
         msin6->msin6_len = sizeof(*msin6);
         msin6->msin6_port = sin6->sin6_port;
         msin6->msin6_flowinfo = sin6->sin6_flowinfo;
-        memcpy(&msin6->msin6_addr, &sin6->sin6_addr, sizeof(msin6->msin6_addr));
+        memcpy(&msin6->msin6_addr, &sin6->sin6_addr,
+               sizeof(msin6->msin6_addr));
         msin6->msin6_scope_id = sin6->sin6_scope_id;
+        break;
+    case AF_LOCAL:
+        msun->msun_family = MN_AF_LOCAL;
+        strncpy(msun->msun_path, sun->sun_path, sizeof msun->msun_path);
+        if (strcmp(msun->msun_path, sun->sun_path) != 0) {
+            /* Path too long. */
+            return MN_EINVAL;
+        }
         break;
     default:
         return MN_EPROTONOSUPPORT;
@@ -258,6 +281,9 @@ native_sock_create(struct mn_socket **sp, uint8_t domain,
         break;
     case MN_PF_INET6:
         domain = PF_INET6;
+        break;
+    case MN_PF_LOCAL:
+        domain = PF_LOCAL;
         break;
     default:
         return MN_EPROTONOSUPPORT;
@@ -319,6 +345,7 @@ native_sock_close(struct mn_socket *s)
         STAILQ_REMOVE_HEAD(&ns->ns_rx, omp_next);
         os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(m));
     }
+    os_mbuf_free_chain(ns->ns_tx);
     native_sock_poll_rebuild(nss);
     os_mutex_release(&nss->mtx);
     return 0;
@@ -356,7 +383,7 @@ native_sock_bind(struct mn_socket *s, struct mn_sockaddr *addr)
 {
     struct native_sock_state *nss = &native_sock_state;
     struct native_sock *ns = (struct native_sock *)s;
-    struct sockaddr_storage ss;
+    struct sockaddr_un ss;
     struct sockaddr *sa = (struct sockaddr *)&ss;
     int rc;
     int sa_len;
@@ -441,16 +468,20 @@ native_sock_stream_tx(struct native_sock *ns, int notify)
             rc = 0;
         } else {
             rc = errno;
+            if (rc == EAGAIN) {
+                rc = 0;
+            } else {
+                /*
+                 * Socket had an error. User should close it.
+                 */
+                os_mbuf_free_chain(ns->ns_tx);
+                ns->ns_tx = NULL;
+                rc = native_sock_err_to_mn_err(rc);
+            }
+            break;
         }
     }
     os_mutex_release(&nss->mtx);
-    if (rc) {
-        if (rc == EAGAIN) {
-            rc = 0;
-        } else {
-            rc = native_sock_err_to_mn_err(rc);
-        }
-    }
     if (notify) {
         if (ns->ns_tx == NULL) {
             mn_socket_writable(&ns->ns_sock, 0);
@@ -468,7 +499,7 @@ native_sock_sendto(struct mn_socket *s, struct os_mbuf *m,
     struct native_sock *ns = (struct native_sock *)s;
     struct sockaddr_storage ss;
     struct sockaddr *sa = (struct sockaddr *)&ss;
-    uint8_t tmpbuf[NATIVE_SOCK_MAX_UDP];
+    uint8_t tmpbuf[MYNEWT_VAL(NATIVE_SOCKETS_MAX_UDP)];
     struct os_mbuf *o;
     int sa_len;
     int off;
@@ -511,7 +542,7 @@ native_sock_recvfrom(struct mn_socket *s, struct os_mbuf **mp,
     struct native_sock *ns = (struct native_sock *)s;
     struct sockaddr_storage ss;
     struct sockaddr *sa = (struct sockaddr *)&ss;
-    uint8_t tmpbuf[NATIVE_SOCK_MAX_UDP];
+    uint8_t tmpbuf[MYNEWT_VAL(NATIVE_SOCKETS_MAX_UDP)];
     struct os_mbuf *m;
     socklen_t slen;
     int rc;
@@ -620,6 +651,15 @@ native_sock_setsockopt(struct mn_socket *s, uint8_t level, uint8_t name,
                 return native_sock_err_to_mn_err(errno);
             }
             return 0;
+
+        case MN_REUSEADDR:
+            name = SO_REUSEADDR;
+            val32 = *(uint32_t *)val;
+            rc = setsockopt(ns->ns_fd, level, name, &val32, sizeof(val32));
+            if (rc) {
+                return native_sock_err_to_mn_err(errno);
+            }
+            return 0;
         }
     }
     return MN_EPROTONOSUPPORT;
@@ -684,7 +724,7 @@ socket_task(void *arg)
     os_mutex_pend(&nss->mtx, OS_WAIT_FOREVER);
     while (1) {
         os_mutex_release(&nss->mtx);
-        os_time_delay(NATIVE_SOCK_POLL_ITVL);
+        os_time_delay(MYNEWT_VAL(NATIVE_SOCKETS_POLL_ITVL));
         os_mutex_pend(&nss->mtx, OS_WAIT_FOREVER);
         if (nss->poll_fd_cnt) {
             rc = poll(nss->poll_fds, nss->poll_fd_cnt, 0);
@@ -726,6 +766,15 @@ socket_task(void *arg)
                 mn_socket_readable(&ns->ns_sock, 0);
             }
         }
+        for (i = 0; i < MYNEWT_VAL(NATIVE_SOCKETS_MAX); i++) {
+            ns = &native_socks[i];
+            if (ns->ns_fd < 0) {
+                continue;
+            }
+            if (ns->ns_type == SOCK_STREAM && ns->ns_tx) {
+                native_sock_stream_tx(ns, 1);
+            }
+        }
     }
 }
 
@@ -739,17 +788,18 @@ native_sock_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-    for (i = 0; i < NATIVE_SOCK_MAX; i++) {
+    for (i = 0; i < MYNEWT_VAL(NATIVE_SOCKETS_MAX); i++) {
         native_socks[i].ns_fd = -1;
         STAILQ_INIT(&native_socks[i].ns_rx);
     }
-    sp = malloc(sizeof(os_stack_t) * SOCK_STACK_SZ);
+    sp = malloc(sizeof(os_stack_t) * MYNEWT_VAL(NATIVE_SOCKETS_STACK_SZ));
     if (!sp) {
         return -1;
     }
     os_mutex_init(&nss->mtx);
     i = os_task_init(&nss->task, "socket", socket_task, &native_sock_state,
-      SOCK_PRIO, OS_WAIT_FOREVER, sp, SOCK_STACK_SZ);
+      MYNEWT_VAL(NATIVE_SOCKETS_PRIO), OS_WAIT_FOREVER, sp,
+      MYNEWT_VAL(NATIVE_SOCKETS_STACK_SZ));
     if (i) {
         return -1;
     }

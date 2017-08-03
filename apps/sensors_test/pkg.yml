@@ -20,20 +20,15 @@
 pkg.name: apps/sensors_test
 pkg.type: app
 pkg.description: "Example application which uses a variety of mynewt features."
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
 
 pkg.deps:
     - test/flash_test
+    - test/i2c_scan
     - kernel/os
     - hw/sensor
-    - hw/drivers/sensors/sim
-    - hw/drivers/sensors/lsm303dlhc
-    - hw/drivers/sensors/tsl2561
-    - hw/drivers/sensors/bno055
-    - hw/drivers/sensors/tcs34725
-    - hw/drivers/sensors/bme280
     - boot/bootutil
     - sys/shell
     - sys/config
@@ -43,10 +38,11 @@ pkg.deps:
     - sys/stats/full
     - boot/split
     - mgmt/imgmgr
-    #- mgmt/newtmgr
+    - mgmt/newtmgr/transport/ble
+    - hw/sensor/creator
 
 pkg.deps.SENSOR_OIC:
-    - mgmt/oicmgr
+   #- mgmt/oicmgr
 
 pkg.deps.SENSOR_BLE:
     - net/nimble/controller

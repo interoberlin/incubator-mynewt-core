@@ -406,7 +406,8 @@ ble_att_truncate_to_mtu(const struct ble_l2cap_chan *att_chan,
  *
  * @param conn_handle           The handle of the connection to query.
  *
- * @return                      The specified connection's ATT MTU.
+ * @return                      The specified connection's ATT MTU, or 0 if
+ *                                  there is no such connection.
  */
 uint16_t
 ble_att_mtu(uint16_t conn_handle)
@@ -502,7 +503,8 @@ ble_att_rx(struct ble_l2cap_chan *chan)
 }
 
 /**
- * Retrieves the preferred ATT MTU.
+ * Retrieves the preferred ATT MTU.  This is the value indicated by the device
+ * during an ATT MTU exchange.
  *
  * @return                      The preferred ATT MTU.
  */
@@ -587,7 +589,7 @@ ble_att_init(void)
 {
     int rc;
 
-    ble_att_preferred_mtu_val = BLE_ATT_MTU_PREFERRED_DFLT;
+    ble_att_preferred_mtu_val = MYNEWT_VAL(BLE_ATT_PREFERRED_MTU);
 
     rc = stats_init_and_reg(
         STATS_HDR(ble_att_stats), STATS_SIZE_INIT_PARMS(ble_att_stats,

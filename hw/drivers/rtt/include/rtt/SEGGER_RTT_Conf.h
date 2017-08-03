@@ -69,6 +69,8 @@ Revision: $Rev: 4351 $
   #include <intrinsics.h>
 #endif
 
+#include "rtt/SEGGER_RTT_Conf_Mynewt.h"
+
 /*********************************************************************
 *
 *       Defines, configurable
@@ -80,7 +82,7 @@ Revision: $Rev: 4351 $
 #define SEGGER_RTT_MAX_NUM_DOWN_BUFFERS           (3)     // Max. number of down-buffers (H->T) available on this target  (Default: 3)
 
 #define BUFFER_SIZE_UP                            (MYNEWT_VAL(RTT_BUFFER_SIZE_UP))  // Size of the buffer for terminal output of target, up to host (Default: 1k)
-#define BUFFER_SIZE_DOWN                          (16)    // Size of the buffer for terminal input to target from host (Usually keyboard input) (Default: 16)
+#define BUFFER_SIZE_DOWN                          (MYNEWT_VAL(RTT_BUFFER_SIZE_DOWN))    // Size of the buffer for terminal input to target from host (Usually keyboard input) (Default: 16)
 
 #define SEGGER_RTT_PRINTF_BUFFER_SIZE             (64u)    // Size of buffer for RTT printf to bulk-send chars via RTT     (Default: 64)
 
@@ -172,8 +174,13 @@ Revision: $Rev: 4351 $
                                                 );                             \
                             }
 #else
-    #define SEGGER_RTT_LOCK()  
-    #define SEGGER_RTT_UNLOCK()
+    #ifndef   SEGGER_RTT_LOCK
+      #define SEGGER_RTT_LOCK()                // Lock RTT (nestable)   (i.e. disable interrupts)
+    #endif
+
+    #ifndef   SEGGER_RTT_UNLOCK
+      #define SEGGER_RTT_UNLOCK()              // Unlock RTT (nestable) (i.e. enable previous interrupt lock state)
+    #endif
   #endif
 #endif
 

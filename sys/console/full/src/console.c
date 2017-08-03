@@ -34,6 +34,7 @@
 /* Control characters */
 #define ESC                0x1b
 #define DEL                0x7f
+#define BS                 0x08
 
 /* ANSI escape sequences */
 #define ANSI_ESC           '['
@@ -116,11 +117,18 @@ console_read(char *str, int cnt, int *newline)
     }
     cmd = ev->ev_arg;
     len = strlen(cmd->line);
+
     if ((cnt - 1) < len) {
         len = cnt - 1;
     }
-    memcpy(str, cmd->line, len);
-    str[len] = '\0';
+
+    if (len > 0) {
+        memcpy(str, cmd->line, len);
+        str[len] = '\0';
+    } else {
+        str[0] = cmd->line[0];
+    }
+
     os_eventq_put(avail_queue, ev);
     *newline = 1;
     return len;
@@ -378,6 +386,7 @@ console_handle_char(uint8_t byte)
 
     static struct os_event *ev;
     static struct console_input *input;
+    static char prev_endl = '\0';
 
     if (!avail_queue || !lines_queue) {
         return 0;
@@ -458,6 +467,7 @@ console_handle_char(uint8_t byte)
             nlip_state |= NLIP_DATA_START1;
             break;
         case DEL:
+        case BS:
             if (cur > 0) {
                 del_char(&input->line[--cur], end);
             }
@@ -465,7 +475,18 @@ console_handle_char(uint8_t byte)
         case ESC:
             esc_state |= ESC_ESC;
             break;
+        default:
+            insert_char(&input->line[cur], byte, end);
+            /* Falls through. */
         case '\r':
+            /* Falls through. */
+        case '\n':
+            if (byte == '\n' && prev_endl == '\r') {
+                /* handle double end line chars */
+                prev_endl = byte;
+                break;
+            }
+            prev_endl = byte;
             input->line[cur + end] = '\0';
             console_out('\r');
             console_out('\n');
@@ -489,8 +510,6 @@ console_handle_char(uint8_t byte)
                 console_non_blocking_mode();
             }
             break;
-        default:
-            break;
         }
 
         return 0;
@@ -508,6 +527,9 @@ console_is_init(void)
 #endif
 #if MYNEWT_VAL(CONSOLE_RTT)
     return rtt_console_is_init();
+#endif
+#if MYNEWT_VAL(CONSOLE_BLE_MONITOR)
+    return ble_monitor_console_is_init();
 #endif
     return 0;
 }

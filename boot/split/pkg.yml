@@ -19,13 +19,13 @@
 
 pkg.name: boot/split
 pkg.description: The split image library helps manage and configure split image operation
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
     - split
 
-pkg.deps: 
-    - boot/bootutil
+pkg.req_apis:
+    - bootloader
 
 pkg.init:
     split_app_init: 500

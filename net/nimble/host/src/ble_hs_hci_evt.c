@@ -25,6 +25,7 @@
 #include "nimble/hci_common.h"
 #include "nimble/ble_hci_trans.h"
 #include "host/ble_gap.h"
+#include "host/ble_monitor.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_dbg_priv.h"
 
@@ -46,6 +47,9 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_upd_complete;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_lt_key_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_parm_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_dir_adv_rpt;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_phy_update_complete;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_ext_adv_rpt;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_rd_rem_used_feat_complete;
 
 /* Statistics */
 struct host_hci_stats
@@ -92,6 +96,11 @@ static const struct ble_hs_hci_evt_le_dispatch_entry
     { BLE_HCI_LE_SUBEV_REM_CONN_PARM_REQ, ble_hs_hci_evt_le_conn_parm_req },
     { BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE, ble_hs_hci_evt_le_conn_complete },
     { BLE_HCI_LE_SUBEV_DIRECT_ADV_RPT, ble_hs_hci_evt_le_dir_adv_rpt },
+    { BLE_HCI_LE_SUBEV_PHY_UPDATE_COMPLETE,
+        ble_hs_hci_evt_le_phy_update_complete },
+    { BLE_HCI_LE_SUBEV_EXT_ADV_RPT, ble_hs_hci_evt_le_ext_adv_rpt },
+    { BLE_HCI_LE_SUBEV_RD_REM_USED_FEAT,
+            ble_hs_hci_evt_le_rd_rem_used_feat_complete },
 };
 
 #define BLE_HS_HCI_EVT_LE_DISPATCH_SZ \
@@ -312,12 +321,9 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, uint8_t *data, int len)
 }
 
 static int
-ble_hs_hci_evt_le_adv_rpt_first_pass(uint8_t *data, int len,
-                                     uint8_t *out_num_reports,
-                                     int *out_rssi_off)
+ble_hs_hci_evt_le_adv_rpt_first_pass(uint8_t *data, int len)
 {
     uint8_t num_reports;
-    int data_len;
     int off;
     int i;
 
@@ -328,34 +334,28 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(uint8_t *data, int len,
     num_reports = data[1];
     if (num_reports < BLE_HCI_LE_ADV_RPT_NUM_RPTS_MIN ||
         num_reports > BLE_HCI_LE_ADV_RPT_NUM_RPTS_MAX) {
-
         return BLE_HS_EBADDATA;
     }
 
-    off = 2 +       /* Subevent code and num reports. */
-          (1 +      /* Event type. */
-           1 +      /* Address type. */
-           6        /* Address. */
-          ) * num_reports;
-    if (off + num_reports >= len) {
-        return BLE_HS_ECONTROLLER;
-    }
-
-    data_len = 0;
+    off = 2; /* Subevent code and num reports. */
     for (i = 0; i < num_reports; i++) {
-        data_len += data[off];
-        off++;
+        /* Move past event type (1), address type (1) and address (6) */
+        off += 8;
+
+        /* Add advertising data length (N), length (1) and rssi (1) */
+        off += data[off];
+        off += 2;
+
+        /* Make sure we are not past length */
+        if (off > len) {
+            return BLE_HS_ECONTROLLER;
+        }
     }
 
-    off += data_len;
-
-    /* Check if RSSI fields fit in the packet. */
-    if (off + num_reports > len) {
+    /* Make sure length was correct */
+    if (off != len) {
         return BLE_HS_ECONTROLLER;
     }
-
-    *out_num_reports = num_reports;
-    *out_rssi_off = off;
 
     return 0;
 }
@@ -363,49 +363,40 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(uint8_t *data, int len,
 static int
 ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, uint8_t *data, int len)
 {
-    struct ble_gap_disc_desc desc;
+    struct ble_gap_disc_desc desc = {0};
     uint8_t num_reports;
-    int rssi_off;
-    int data_off;
-    int suboff;
     int off;
     int rc;
     int i;
 
-    rc = ble_hs_hci_evt_le_adv_rpt_first_pass(data, len, &num_reports,
-                                             &rssi_off);
+    /* Validate the event is formatted correctly */
+    rc = ble_hs_hci_evt_le_adv_rpt_first_pass(data, len);
     if (rc != 0) {
         return rc;
     }
 
     desc.direct_addr = *BLE_ADDR_ANY;
 
-    data_off = 0;
+    off = 2; /* skip sub-event and num reports */
+    num_reports = data[1];
     for (i = 0; i < num_reports; i++) {
-        suboff = 0;
-
-        off = 2 + suboff * num_reports + i;
         desc.event_type = data[off];
-        suboff++;
+        ++off;
 
-        off = 2 + suboff * num_reports + i;
         desc.addr.type = data[off];
-        suboff++;
+        ++off;
 
-        off = 2 + suboff * num_reports + i * 6;
         memcpy(desc.addr.val, data + off, 6);
-        suboff += 6;
+        off += 6;
 
-        off = 2 + suboff * num_reports + i;
         desc.length_data = data[off];
-        suboff++;
+        ++off;
 
-        off = 2 + suboff * num_reports + data_off;
         desc.data = data + off;
-        data_off += desc.length_data;
+        off += desc.length_data;
 
-        off = rssi_off + 1 * i;
         desc.rssi = data[off];
+        ++off;
 
         ble_gap_rx_adv_report(&desc);
     }
@@ -416,7 +407,7 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, uint8_t *data, int len)
 static int
 ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, uint8_t *data, int len)
 {
-    struct ble_gap_disc_desc desc;
+    struct ble_gap_disc_desc desc = {0};
     uint8_t num_reports;
     int suboff;
     int off;
@@ -465,6 +456,105 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, uint8_t *data, int len)
         ble_gap_rx_adv_report(&desc);
     }
 
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_rd_rem_used_feat_complete(uint8_t subevent, uint8_t *data,
+                                                                        int len)
+{
+    struct hci_le_rd_rem_supp_feat_complete evt;
+
+    if (len < BLE_HCI_LE_RD_REM_USED_FEAT_LEN) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    evt.subevent_code = data[0];
+    evt.status = data[1];
+    evt.connection_handle = get_le16(data + 2);
+    memcpy(evt.features, data + 4, 8);
+
+    ble_gap_rx_rd_rem_sup_feat_complete(&evt);
+
+    return 0;
+}
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+static int
+ble_hs_hci_decode_legacy_type(uint16_t evt_type)
+{
+     switch (evt_type) {
+     case BLE_HCI_LEGACY_ADV_EVTYPE_ADV_IND:
+         return BLE_HCI_ADV_RPT_EVTYPE_ADV_IND;
+     case BLE_HCI_LEGACY_ADV_EVTYPE_ADV_DIRECT_IND:
+         return BLE_HCI_ADV_RPT_EVTYPE_DIR_IND;
+     case BLE_HCI_LEGACY_ADV_EVTYPE_ADV_SCAN_IND:
+         return BLE_HCI_ADV_RPT_EVTYPE_SCAN_IND;
+     case BLE_HCI_LEGACY_ADV_EVTYPE_ADV_NONCON_IND:
+         return BLE_HCI_ADV_RPT_EVTYPE_NONCONN_IND;
+     case BLE_HCI_LEGACY_ADV_EVTYPE_SCAN_RSP_ADV_IND:
+         return BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP;
+     default:
+         return -1;
+     }
+}
+#endif
+
+static int
+ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, uint8_t *data, int len)
+{
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    struct ble_gap_ext_disc_desc desc = {0};
+    struct hci_ext_adv_report *ext_adv;
+    struct hci_ext_adv_report_param *params;
+    int num_reports;
+    int i;
+    int legacy_event_type;
+
+    if (len < sizeof(*ext_adv)) {
+        return BLE_HS_EBADDATA;
+    }
+
+    ext_adv = (struct hci_ext_adv_report *) data;
+    num_reports = ext_adv->num_reports;
+    if (num_reports < BLE_HCI_LE_ADV_RPT_NUM_RPTS_MIN ||
+        num_reports > BLE_HCI_LE_ADV_RPT_NUM_RPTS_MAX) {
+
+        return BLE_HS_EBADDATA;
+    }
+
+    if (len < (sizeof(*ext_adv) + ext_adv->num_reports * sizeof(*params))) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    params = &ext_adv->params[0];
+    for (i = 0; i < num_reports; i++) {
+        desc.props = (params->evt_type) & 0xFF;
+        if (desc.props & BLE_HCI_ADV_LEGACY_MASK) {
+            legacy_event_type = ble_hs_hci_decode_legacy_type(params->evt_type);
+            if (legacy_event_type < 0) {
+                params += 1;
+                continue;
+            }
+            desc.legacy_event_type = legacy_event_type;
+        } else {
+            desc.data_status = params->evt_type >> 8;
+        }
+        desc.addr.type = params->addr_type;
+        memcpy(desc.addr.val, params->addr, 6);
+        desc.length_data = params->adv_data_len;
+        desc.data = params->adv_data;
+        desc.rssi = params->rssi;
+        desc.tx_power = params->tx_power;
+        memcpy(desc.direct_addr.val, params->dir_addr, 6);
+        desc.direct_addr.type = params->dir_addr_type;
+        desc.sid = params->sid;
+        desc.prim_phy = params->prim_phy;
+        desc.sec_phy = params->sec_phy;
+        ble_gap_rx_ext_adv_report(&desc);
+        params += 1;
+    }
+#endif
     return 0;
 }
 
@@ -564,6 +654,26 @@ ble_hs_hci_evt_le_conn_parm_req(uint8_t subevent, uint8_t *data, int len)
     return 0;
 }
 
+static int
+ble_hs_hci_evt_le_phy_update_complete(uint8_t subevent, uint8_t *data, int len)
+{
+    struct hci_le_phy_upd_complete evt;
+
+    if (len < BLE_HCI_LE_PHY_UPD_LEN) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    evt.subevent_code = data[0];
+    evt.status = data[1];
+    evt.connection_handle = get_le16(data + 2);
+    evt.tx_phy = data[4];
+    evt.rx_phy = data[5];
+
+    ble_gap_rx_phy_update_complete(&evt);
+
+    return 0;
+}
+
 int
 ble_hs_hci_evt_process(uint8_t *data)
 {
@@ -623,6 +733,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
     }
 
 #if (BLETEST_THROUGHPUT_TEST == 0)
+#if !BLE_MONITOR
     BLE_HS_LOG(DEBUG, "ble_hs_hci_evt_acl_process(): conn_handle=%u pb=%x "
                       "len=%u data=",
                BLE_HCI_DATA_HANDLE(hci_hdr.hdh_handle_pb_bc),
@@ -630,6 +741,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
                hci_hdr.hdh_len);
     ble_hs_log_mbuf(om);
     BLE_HS_LOG(DEBUG, "\n");
+#endif
 #endif
 
     if (hci_hdr.hdh_len != OS_MBUF_PKTHDR(om)->omp_len) {

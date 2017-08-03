@@ -572,17 +572,17 @@ boot_validate_slot(int slot)
         return BOOT_EFLASH;
     }
 
-    if ((boot_data.imgs[slot].hdr.ih_magic != IMAGE_MAGIC ||
-	 boot_image_check(&boot_data.imgs[slot].hdr, fap) != 0) &&
-	slot == 1) {
+    if (boot_data.imgs[slot].hdr.ih_magic != IMAGE_MAGIC ||
+        boot_image_check(&boot_data.imgs[slot].hdr, fap) != 0) {
 
-        /* Image in slot 1 is invalid.  Erase the image and continue booting
-         * from slot 0.
-         */
-        flash_area_erase(fap, 0, fap->fa_size);
+        if (slot != 0) {
+            /* Image in slot 1 is invalid.  Erase the image and continue booting
+             * from slot 0.
+             */
+            flash_area_erase(fap, 0, fap->fa_size);
+        }
         return -1;
     }
-
     flash_area_close(fap);
 
     /* Image in slot 1 is valid. */
@@ -1050,7 +1050,7 @@ boot_go(struct boot_rsp *rsp)
 
     switch (swap_type) {
     case BOOT_SWAP_TYPE_NONE:
-#ifdef BOOTUTIL_VALIDATE_SLOT0
+#if MYNEWT_VAL(BOOTUTIL_VALIDATE_SLOT0)
         rc = boot_validate_slot(0);
         if (rc != 0) {
             return BOOT_EBADIMAGE;

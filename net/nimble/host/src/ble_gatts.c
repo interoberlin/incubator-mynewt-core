@@ -1951,7 +1951,7 @@ ble_gatts_add_svcs(const struct ble_gatt_svc_def *svcs)
  *                              BLE_HS_EINVAL if the svcs array contains an
  *                                  invalid resource definition.
  */
-int
+static int
 ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                           struct ble_gatt_resources *res)
 {
@@ -2078,6 +2078,18 @@ ble_gatts_count_cfg(const struct ble_gatt_svc_def *defs)
         res.cccds * (MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1);
 
     return 0;
+}
+
+void
+ble_gatts_lcl_svc_foreach(ble_gatt_svc_foreach_fn cb)
+{
+    int i;
+
+    for (i = 0; i < ble_gatts_num_svc_entries; i++) {
+        cb(ble_gatts_svc_entries[i].svc,
+           ble_gatts_svc_entries[i].handle,
+           ble_gatts_svc_entries[i].end_group_handle);
+    }
 }
 
 int

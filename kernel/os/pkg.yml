@@ -19,7 +19,7 @@
 
 pkg.name: kernel/os
 pkg.description: Mynewt operating system core.
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
 
@@ -35,6 +35,12 @@ pkg.deps.OS_CLI:
 
 pkg.deps.OS_COREDUMP:
     - sys/coredump
+
+pkg.deps.BSP_SIMULATED:
+    - "@apache-mynewt-core/kernel/sim"
+
+pkg.deps.OS_SYSVIEW:
+    - sys/sysview
 
 pkg.init:
     os_pkg_init: 0

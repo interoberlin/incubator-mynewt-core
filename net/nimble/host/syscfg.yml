@@ -40,6 +40,31 @@ syscfg.defs:
             simulator.
         value: 1
 
+    # Monitor interface settings
+    BLE_MONITOR_UART:
+        description: Enables monitor interface over UART
+        value: 0
+    BLE_MONITOR_UART_DEV:
+        description: Monitor interface UART device
+        value: '"uart0"'
+    BLE_MONITOR_UART_BAUDRATE:
+        description: Baudrate for monitor interface UART
+        value: 1000000
+    BLE_MONITOR_RTT:
+        description: Enables monitor interface over RTT
+        value: 0
+    BLE_MONITOR_RTT_BUFFER_NAME:
+        description: Monitor interface upstream buffer name
+        value: '"monitor"'
+    BLE_MONITOR_RTT_BUFFERED:
+        description: >
+            Enables buffering when using monitor interface over RTT. The data
+            are written to RTT once complete packet is created in intermediate
+            buffer. This allows to skip complete packet if there is not enough
+            space in RTT buffer (e.g. there is no reader connected). If disabled,
+            monitor will simply block waiting for RTT to free space in buffer.
+        value: 1
+
     # L2CAP settings.
     BLE_L2CAP_MAX_CHANS:
         description: >
@@ -288,6 +313,10 @@ syscfg.defs:
         value: 1
 
     # ATT options.
+    BLE_ATT_PREFERRED_MTU:
+        description: The preferred MTU to indicate in MTU exchange commands.
+        value: 256
+
     BLE_ATT_SVR_MAX_PREP_ENTRIES:
         description: >
             A GATT server uses these when a peer performs a "write long
@@ -309,19 +338,18 @@ syscfg.defs:
             The rate that new random addresses should be generated (seconds).
         value: 300
 
-    # Miscellaneous features.
-    BLE_EDDYSTONE:
-        description: >
-            Enables advertising of Eddystone beacons.
-        value: 1
-
     # Store settings.
     BLE_STORE_MAX_BONDS:
         description: >
-            Number of bonds to persist before recycling old ones.
-        value: 4
+            Maximum number of bonds that can be persisted.  Note: increasing
+            this value may also require increasing the capacity of the
+            underlying storage mechanism.
+        value: 3
     BLE_STORE_MAX_CCCDS:
         description: >
-            Number of client characteristic configuration descriptors to
-            persist before recycling old ones.
-        value: 16
+            Maximum number of client characteristic configuration descriptors
+            that can be persisted.  Note: increasing this value may also
+            require increasing the capacity of the underlying storage
+            mechanism.
+
+        value: 8

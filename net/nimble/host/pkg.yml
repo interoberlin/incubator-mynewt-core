@@ -19,7 +19,7 @@
 
 pkg.name: net/nimble/host
 pkg.description: Host side of the nimble Bluetooth Smart stack.
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
     - ble
@@ -35,6 +35,9 @@ pkg.deps.BLE_SM_LEGACY:
 
 pkg.deps.BLE_SM_SC:
     - crypto/tinycrypt
+
+pkg.deps.BLE_MONITOR_RTT:
+    - hw/drivers/rtt
 
 pkg.req_apis:
     - ble_transport

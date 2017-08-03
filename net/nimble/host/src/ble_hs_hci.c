@@ -23,8 +23,10 @@
 #include "os/os.h"
 #include "mem/mem.h"
 #include "nimble/ble_hci_trans.h"
+#include "host/ble_monitor.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_dbg_priv.h"
+#include "ble_monitor_priv.h"
 
 #define BLE_HCI_CMD_TIMEOUT     (OS_TICKS_PER_SEC)
 
@@ -34,6 +36,7 @@ static struct os_sem ble_hs_hci_sem;
 static uint8_t *ble_hs_hci_ack;
 static uint16_t ble_hs_hci_buf_sz;
 static uint8_t ble_hs_hci_max_pkts;
+static uint32_t ble_hs_hci_sup_feat;
 
 #if MYNEWT_VAL(BLE_HS_PHONY_HCI_ACKS)
 static ble_hs_hci_phony_ack_fn *ble_hs_hci_phony_ack_cb;
@@ -233,6 +236,12 @@ ble_hs_hci_wait_for_ack(void)
     switch (rc) {
     case 0:
         BLE_HS_DBG_ASSERT(ble_hs_hci_ack != NULL);
+
+#if BLE_MONITOR
+        ble_monitor_send(BLE_MONITOR_OPCODE_EVENT_PKT, ble_hs_hci_ack,
+                         ble_hs_hci_ack[1] + BLE_HCI_EVENT_HDR_LEN);
+#endif
+
         break;
     case OS_TIMEOUT:
         rc = BLE_HS_ETIMEOUT_HCI;
@@ -369,7 +378,7 @@ ble_hs_hci_max_acl_payload_sz(void)
 static struct os_mbuf *
 ble_hs_hci_frag_alloc(uint16_t frag_size, void *arg)
 {
-    return ble_hs_mbuf_acm_pkt();
+    return ble_hs_mbuf_acl_pkt();
 }
 
 static struct os_mbuf *
@@ -396,8 +405,10 @@ ble_hs_hci_acl_hdr_prepend(struct os_mbuf *om, uint16_t handle,
 
     memcpy(om->om_data, &hci_hdr, sizeof hci_hdr);
 
+#if !BLE_MONITOR
     BLE_HS_LOG(DEBUG, "host tx hci data; handle=%d length=%d\n", handle,
                get_le16(&hci_hdr.hdh_len));
+#endif
 
     return om;
 }
@@ -434,9 +445,11 @@ ble_hs_hci_acl_tx(struct ble_hs_conn *connection, struct os_mbuf *txom)
         }
         pb = BLE_HCI_PB_MIDDLE;
 
+#if !BLE_MONITOR
         BLE_HS_LOG(DEBUG, "ble_hs_hci_acl_tx(): ");
         ble_hs_log_mbuf(frag);
         BLE_HS_LOG(DEBUG, "\n");
+#endif
 
         rc = ble_hs_tx_data(frag);
         if (rc != 0) {
@@ -453,6 +466,18 @@ err:
 
     os_mbuf_free_chain(txom);
     return rc;
+}
+
+void
+ble_hs_hci_set_le_supported_feat(uint32_t feat)
+{
+    ble_hs_hci_sup_feat = feat;
+}
+
+uint32_t
+ble_hs_hci_get_le_supported_feat(void)
+{
+    return ble_hs_hci_sup_feat;
 }
 
 void

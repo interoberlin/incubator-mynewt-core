@@ -188,6 +188,8 @@ int ble_gattc_write_reliable(uint16_t conn_handle,
 int ble_gattc_notify_custom(uint16_t conn_handle, uint16_t att_handle,
                             struct os_mbuf *om);
 int ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle);
+int ble_gattc_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
+                              struct os_mbuf *txom);
 int ble_gattc_indicate(uint16_t conn_handle, uint16_t chr_val_handle);
 
 int ble_gattc_init(void);
@@ -410,43 +412,10 @@ struct ble_gatt_register_ctxt {
     };
 };
 
-/**
- * Contains counts of resources required by the GATT server.  The contents of
- * this struct are generally used to populate a configuration struct before
- * the host is initialized.
- */
-struct ble_gatt_resources {
-    /** Number of services. */
-    uint16_t svcs;
-
-    /** Number of included services. */
-    uint16_t incs;
-
-    /** Number of characteristics. */
-    uint16_t chrs;
-
-    /** Number of descriptors. */
-    uint16_t dscs;
-
-    /**
-     * Number of client characteristic configuration descriptors.  Each of
-     * these also contributes to the total descriptor count.
-     */
-    uint16_t cccds;
-
-    /** Total number of ATT attributes. */
-    uint16_t attrs;
-};
-
 typedef void ble_gatt_register_fn(struct ble_gatt_register_ctxt *ctxt,
                                   void *arg);
 
-int ble_gatts_register_svcs(const struct ble_gatt_svc_def *svcs,
-                            ble_gatt_register_fn *register_cb,
-                            void *cb_arg);
 int ble_gatts_add_svcs(const struct ble_gatt_svc_def *svcs);
-int ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
-                              struct ble_gatt_resources *res);
 int ble_gatts_count_cfg(const struct ble_gatt_svc_def *defs);
 
 void ble_gatts_chr_updated(uint16_t chr_def_handle);
@@ -456,6 +425,11 @@ int ble_gatts_find_chr(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
                        uint16_t *out_def_handle, uint16_t *out_val_handle);
 int ble_gatts_find_dsc(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
                        const ble_uuid_t *dsc_uuid, uint16_t *out_dsc_handle);
+
+typedef void (*ble_gatt_svc_foreach_fn)(const struct ble_gatt_svc_def *svc,
+                                        uint16_t handle,
+                                        uint16_t end_group_handle);
+void ble_gatts_show_local(void);
 
 #ifdef __cplusplus
 }

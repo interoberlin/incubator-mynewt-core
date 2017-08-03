@@ -24,6 +24,7 @@
 #include "console/console.h"
 #include "nimble/hci_common.h"
 #include "nimble/ble_hci_trans.h"
+#include "host/ble_monitor.h"
 #include "ble_hs_priv.h"
 
 static void
@@ -142,6 +143,11 @@ ble_hs_dbg_le_event_disp(uint8_t subev, uint8_t len, uint8_t *evdata)
             BLE_HS_LOG(DEBUG, "LE LTK Req. handle=%u rand=%lx%lx encdiv=%u\n",
                        get_le16(evdata), get_le32(evdata + 6),
                        get_le32(evdata + 2), get_le16(evdata + 10));
+        break;
+
+    case BLE_HCI_LE_SUBEV_PHY_UPDATE_COMPLETE:
+            BLE_HS_LOG(DEBUG, "PHY update. handle=%u tx=%u rx=%u\n",
+                       get_le16(evdata + 1), evdata[3], evdata[4]);
         break;
 
     default:
@@ -452,7 +458,7 @@ ble_hs_dbg_cmd_status_disp(uint8_t *evdata, uint8_t len)
 void
 ble_hs_dbg_event_disp(uint8_t *evbuf)
 {
-#if MYNEWT_VAL(LOG_LEVEL) > LOG_LEVEL_DEBUG
+#if MYNEWT_VAL(LOG_LEVEL) > LOG_LEVEL_DEBUG || BLE_MONITOR
     return;
 #endif
 

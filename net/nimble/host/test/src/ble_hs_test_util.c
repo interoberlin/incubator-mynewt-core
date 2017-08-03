@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <errno.h>
+#include "sysinit/sysinit.h"
 #include "stats/stats.h"
 #include "testutil/testutil.h"
 #include "nimble/ble.h"
@@ -26,7 +27,7 @@
 #include "nimble/ble_hci_trans.h"
 #include "host/ble_hs_adv.h"
 #include "host/ble_hs_id.h"
-#include "store/ram/ble_store_ram.h"
+#include "store/config/ble_store_config.h"
 #include "transport/ram/ble_hci_ram.h"
 #include "ble_hs_test_util.h"
 
@@ -370,10 +371,12 @@ ble_hs_test_util_create_rpa_conn(uint16_t handle, uint8_t own_addr_type,
                                  uint8_t peer_addr_type,
                                  const uint8_t *peer_id_addr,
                                  const uint8_t *peer_rpa,
+                                 uint8_t conn_features,
                                  ble_gap_event_fn *cb, void *cb_arg)
 {
     ble_addr_t addr;
     struct hci_le_conn_complete evt;
+    struct hci_le_rd_rem_supp_feat_complete evt2;
     int rc;
 
     addr.type = peer_addr_type;
@@ -381,6 +384,10 @@ ble_hs_test_util_create_rpa_conn(uint16_t handle, uint8_t own_addr_type,
 
     ble_hs_test_util_connect(own_addr_type, &addr,
                              0, NULL, cb, cb_arg, 0);
+
+    /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
+    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
 
     memset(&evt, 0, sizeof evt);
     evt.subevent_code = BLE_HCI_LE_SUBEV_CONN_COMPLETE;
@@ -398,6 +405,13 @@ ble_hs_test_util_create_rpa_conn(uint16_t handle, uint8_t own_addr_type,
     rc = ble_gap_rx_conn_complete(&evt);
     TEST_ASSERT(rc == 0);
 
+    evt2.subevent_code = BLE_HCI_LE_SUBEV_RD_REM_USED_FEAT;
+    evt2.status = BLE_ERR_SUCCESS;
+    evt2.connection_handle = handle;
+    memcpy(evt2.features, ((uint8_t[]){ conn_features, 0, 0, 0, 0, 0, 0, 0 }), 8);
+
+    ble_gap_rx_rd_rem_sup_feat_complete(&evt2);
+
     ble_hs_test_util_prev_hci_tx_clear();
 }
 
@@ -409,7 +423,19 @@ ble_hs_test_util_create_conn(uint16_t handle, const uint8_t *peer_id_addr,
 
     ble_hs_test_util_create_rpa_conn(handle, BLE_OWN_ADDR_PUBLIC, null_addr,
                                      BLE_ADDR_PUBLIC, peer_id_addr,
-                                     null_addr, cb, cb_arg);
+                                     null_addr, BLE_HS_TEST_CONN_FEAT_ALL,
+                                     cb, cb_arg);
+}
+
+void
+ble_hs_test_util_create_conn_feat(uint16_t handle, const uint8_t *peer_id_addr,
+                             uint8_t conn_features, ble_gap_event_fn *cb, void *cb_arg)
+{
+    static uint8_t null_addr[6];
+
+    ble_hs_test_util_create_rpa_conn(handle, BLE_OWN_ADDR_PUBLIC, null_addr,
+                                     BLE_ADDR_PUBLIC, peer_id_addr,
+                                     null_addr, conn_features, cb, cb_arg);
 }
 
 static void
@@ -862,8 +888,15 @@ ble_hs_test_util_conn_update(uint16_t conn_handle,
 {
     int rc;
 
-    ble_hs_test_util_set_ack(
-        BLE_HS_TEST_UTIL_LE_OPCODE(BLE_HCI_OCF_LE_CONN_UPDATE), hci_status);
+    /*
+     * 0xFF is magic value used for cases where we expect update over L2CAP to
+     * be triggered - in this case we don't need phony ack.
+     */
+    if (hci_status != 0xFF) {
+        ble_hs_test_util_set_ack(
+                BLE_HS_TEST_UTIL_LE_OPCODE(BLE_HCI_OCF_LE_CONN_UPDATE),
+                hci_status);
+    }
 
     rc = ble_gap_update_params(conn_handle, params);
     return rc;
@@ -2328,7 +2361,7 @@ ble_hs_test_util_store_read(int obj_type, const union ble_store_key *key,
     ble_sm_test_store_obj_type = obj_type;
     ble_sm_test_store_key = *key;
 
-    rc = ble_store_ram_read(obj_type, key, value);
+    rc = ble_store_config_read(obj_type, key, value);
     ble_sm_test_store_value = *value;
 
     return rc;
@@ -2341,7 +2374,7 @@ ble_hs_test_util_store_write(int obj_type, const union ble_store_value *value)
 
     ble_sm_test_store_obj_type = obj_type;
 
-    rc = ble_store_ram_write(obj_type, value);
+    rc = ble_store_config_write(obj_type, value);
     ble_sm_test_store_value = *value;
 
     return rc;
@@ -2355,14 +2388,14 @@ ble_hs_test_util_store_delete(int obj_type, const union ble_store_key *key)
     ble_sm_test_store_obj_type = obj_type;
     ble_sm_test_store_key = *key;
 
-    rc = ble_store_ram_delete(obj_type, key);
+    rc = ble_store_config_delete(obj_type, key);
     return rc;
 }
 
 void
 ble_hs_test_util_init_no_start(void)
 {
-    tu_init();
+    sysinit();
 
     os_eventq_init(&ble_hs_test_util_evq);
     STAILQ_INIT(&ble_hs_test_util_prev_tx_queue);

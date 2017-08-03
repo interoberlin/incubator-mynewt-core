@@ -111,6 +111,9 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_SUBSCRIBE             14
 #define BLE_GAP_EVENT_MTU                   15
 #define BLE_GAP_EVENT_IDENTITY_RESOLVED     16
+#define BLE_GAP_EVENT_REPEAT_PAIRING        17
+#define BLE_GAP_EVENT_PHY_UPDATE_COMPLETE   18
+#define BLE_GAP_EVENT_EXT_DISC              19
 
 /*** Reason codes for the subscribe GAP event. */
 
@@ -126,6 +129,9 @@ struct hci_conn_update;
  */
 #define BLE_GAP_SUBSCRIBE_REASON_RESTORE    3
 
+#define BLE_GAP_REPEAT_PAIRING_RETRY        1
+#define BLE_GAP_REPEAT_PAIRING_IGNORE       2
+
 struct ble_gap_sec_state {
     unsigned encrypted:1;
     unsigned authenticated:1;
@@ -134,20 +140,20 @@ struct ble_gap_sec_state {
 };
 
 /**
- * @param discoverable_mode     One of the following constants:
- *                                  o BLE_GAP_DISC_MODE_NON
- *                                      (non-discoverable; 3.C.9.2.2).
- *                                  o BLE_GAP_DISC_MODE_LTD
- *                                      (limited-discoverable; 3.C.9.2.3).
- *                                  o BLE_GAP_DISC_MODE_GEN
- *                                      (general-discoverable; 3.C.9.2.4).
- * @param connectable_mode      One of the following constants:
+ * conn_mode:                   One of the following constants:
  *                                  o BLE_GAP_CONN_MODE_NON
  *                                      (non-connectable; 3.C.9.3.2).
  *                                  o BLE_GAP_CONN_MODE_DIR
  *                                      (directed-connectable; 3.C.9.3.3).
  *                                  o BLE_GAP_CONN_MODE_UND
  *                                      (undirected-connectable; 3.C.9.3.4).
+ * disc_mode:                   One of the following constants:
+ *                                  o BLE_GAP_DISC_MODE_NON
+ *                                      (non-discoverable; 3.C.9.2.2).
+ *                                  o BLE_GAP_DISC_MODE_LTD
+ *                                      (limited-discoverable; 3.C.9.2.3).
+ *                                  o BLE_GAP_DISC_MODE_GEN
+ *                                      (general-discoverable; 3.C.9.2.4).
  */
 struct ble_gap_adv_params {
     /*** Mandatory fields. */
@@ -187,6 +193,12 @@ struct ble_gap_conn_params {
     uint16_t max_ce_len;
 };
 
+struct ble_gap_ext_disc_params {
+    uint16_t itvl;
+    uint16_t window;
+    uint8_t passive:1;
+};
+
 struct ble_gap_disc_params {
     uint16_t itvl;
     uint16_t window;
@@ -210,6 +222,28 @@ struct ble_gap_passkey_params {
     uint32_t numcmp;
 };
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+struct ble_gap_ext_disc_desc {
+    /*** Common fields. */
+    uint8_t props;
+    uint8_t data_status;
+    uint8_t legacy_event_type;
+    ble_addr_t addr;
+    int8_t rssi;
+    uint8_t tx_power;
+    uint8_t sid;
+    uint8_t prim_phy;
+    uint8_t sec_phy;
+    uint8_t length_data;
+    uint8_t *data;
+    /***
+     * LE direct advertising report fields; direct_addr is BLE_ADDR_ANY if
+     * direct address fields are not present.
+     */
+    ble_addr_t direct_addr;
+};
+#endif
+
 struct ble_gap_disc_desc {
     /*** Common fields. */
     uint8_t event_type;
@@ -223,6 +257,25 @@ struct ble_gap_disc_desc {
      * direct address fields are not present.
      */
     ble_addr_t direct_addr;
+};
+
+struct ble_gap_repeat_pairing {
+    /** The handle of the relevant connection. */
+    uint16_t conn_handle;
+
+    /** Properties of the existing bond. */
+    uint8_t cur_key_size;
+    uint8_t cur_authenticated:1;
+    uint8_t cur_sc:1;
+
+    /**
+     * Properties of the imminent secure link if the pairing procedure is
+     * allowed to continue.
+     */
+    uint8_t new_key_size;
+    uint8_t new_authenticated:1;
+    uint8_t new_sc:1;
+    uint8_t new_bonding:1;
 };
 
 /**
@@ -283,6 +336,14 @@ struct ble_gap_event {
          */
         struct ble_gap_disc_desc disc;
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+        /**
+         * Represents an extended advertising report received during a discovery
+         * procedure.  Valid for the following event types:
+         *     o BLE_GAP_EVENT_EXT_DISC
+         */
+        struct ble_gap_ext_disc_desc ext_disc;
+#endif
         /**
          * Represents an attempt to update a connection's parameters.  If the
          * attempt was successful, the connection's descriptor reflects the
@@ -517,6 +578,40 @@ struct ble_gap_event {
             /** The handle of the relevant connection. */
             uint16_t conn_handle;
         } identity_resolved;
+
+        /**
+         * Represents a peer's attempt to pair despite a bond already existing.
+         * The application has two options for handling this event type:
+         *     o Retry: Return BLE_GAP_REPEAT_PAIRING_RETRY after deleting the
+         *              conflicting bond.  The stack will verify the bond has
+         *              been deleted and continue the pairing procedure.  If
+         *              the bond is still present, this event will be reported
+         *              again.
+         *     o Ignore: Return BLE_GAP_REPEAT_PAIRING_IGNORE.  The stack will
+         *               silently ignore the pairing request.
+         *
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_REPEAT_PAIRING
+         */
+        struct ble_gap_repeat_pairing repeat_pairing;
+
+        /**
+         * Represents a change of PHY. This is issue after successful
+         * change on PHY.
+         */
+        struct {
+            int status;
+            uint16_t conn_handle;
+
+            /**
+             * Indicates enabled TX/RX PHY. Possible values:
+             *     o BLE_GAP_LE_PHY_1M
+             *     o BLE_GAP_LE_PHY_2M
+             *     o BLE_GAP_LE_PHY_CODED
+             */
+            uint8_t tx_phy;
+            uint8_t rx_phy;
+        } phy_updated;
     };
 };
 
@@ -544,28 +639,65 @@ int ble_gap_adv_set_data(const uint8_t *data, int data_len);
 int ble_gap_adv_rsp_set_data(const uint8_t *data, int data_len);
 int ble_gap_adv_set_fields(const struct ble_hs_adv_fields *rsp_fields);
 int ble_gap_adv_rsp_set_fields(const struct ble_hs_adv_fields *rsp_fields);
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+int ble_gap_adv_set_tx_power(int8_t tx_power);
+int ble_gap_adv_set_phys(uint8_t primary_phy, uint8_t secondary_phy);
+#endif
+
 int ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
                  const struct ble_gap_disc_params *disc_params,
                  ble_gap_event_fn *cb, void *cb_arg);
+int ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
+                     uint8_t filter_duplicates, uint8_t filter_policy,
+                     uint8_t limited,
+                     const struct ble_gap_ext_disc_params *uncoded_params,
+                     const struct ble_gap_ext_disc_params *coded_params,
+                     ble_gap_event_fn *cb, void *cb_arg);
 int ble_gap_disc_cancel(void);
 int ble_gap_disc_active(void);
 int ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                     int32_t duration_ms,
                     const struct ble_gap_conn_params *params,
                     ble_gap_event_fn *cb, void *cb_arg);
+int ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                        int32_t duration_ms, uint8_t phy_mask,
+                        const struct ble_gap_conn_params *phy_1m_conn_params,
+                        const struct ble_gap_conn_params *phy_2m_conn_params,
+                        const struct ble_gap_conn_params *phy_coded_conn_params,
+                        ble_gap_event_fn *cb, void *cb_arg);
 int ble_gap_conn_cancel(void);
 int ble_gap_conn_active(void);
 int ble_gap_terminate(uint16_t conn_handle, uint8_t hci_reason);
 int ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count);
 int ble_gap_update_params(uint16_t conn_handle,
                           const struct ble_gap_upd_params *params);
-int ble_gap_dbg_update_active(uint16_t conn_handle);
 int ble_gap_security_initiate(uint16_t conn_handle);
 int ble_gap_pair_initiate(uint16_t conn_handle);
 int ble_gap_encryption_initiate(uint16_t conn_handle, const uint8_t *ltk,
                                 uint16_t ediv, uint64_t rand_val, int auth);
 int ble_gap_conn_rssi(uint16_t conn_handle, int8_t *out_rssi);
 
+#define BLE_GAP_PRIVATE_MODE_NETWORK        0
+#define BLE_GAP_PRIVATE_MODE_DEVICE         1
+int ble_gap_set_priv_mode(const ble_addr_t *peer_addr, uint8_t priv_mode);
+
+#define BLE_GAP_LE_PHY_1M                   1
+#define BLE_GAP_LE_PHY_2M                   2
+#define BLE_GAP_LE_CODED                    3
+int ble_gap_read_le_phy(uint16_t conn_handle, uint8_t *tx_phy, uint8_t *rx_phy);
+
+#define BLE_GAP_LE_PHY_1M_MASK              0x01
+#define BLE_GAP_LE_PHY_2M_MASK              0x02
+#define BLE_GAP_LE_PHY_CODED_MASK           0x04
+int ble_gap_set_prefered_default_le_phy(uint8_t tx_phys_mask,
+                                        uint8_t rx_phys_mask);
+
+#define BLE_GAP_LE_PHY_CODED_ANY            0
+#define BLE_GAP_LE_PHY_CODED_S2             1
+#define BLE_GAP_LE_PHY_CODED_S8             2
+int ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
+                                uint8_t rx_phys_mask, uint16_t phy_opts);
 #ifdef __cplusplus
 }
 #endif

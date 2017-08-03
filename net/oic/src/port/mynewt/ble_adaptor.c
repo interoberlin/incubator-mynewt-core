@@ -36,26 +36,35 @@
 
 /* OIC Transport Profile GATT */
 
-/* service UUID */
+/* unsecure service UUID */
 /* ADE3D529-C784-4F63-A987-EB69F70EE816 */
-static const ble_uuid128_t oc_gatt_svc_uuid =
-    BLE_UUID128_INIT(OC_GATT_SERVICE_UUID);
+static const ble_uuid128_t oc_gatt_unsec_svc_uuid =
+    BLE_UUID128_INIT(OC_GATT_UNSEC_SVC_UUID);
 
-/* 16-bit service UUID. */
-static const ble_uuid16_t runtime_coap_svc_uuid =
-    BLE_UUID16_INIT(RUNTIME_COAP_SERVICE_UUID);
-
-/* request characteristic UUID */
+/* unsecure request characteristic UUID */
 /* AD7B334F-4637-4B86-90B6-9D787F03D218 */
-static const ble_uuid128_t oc_gatt_req_chr_uuid =
-    BLE_UUID128_INIT(0x18, 0xd2, 0x03, 0x7f, 0x78, 0x9d, 0xb6, 0x90,
-                     0x86, 0x4b, 0x37, 0x46, 0x4f, 0x33, 0x7b, 0xad);
+static const ble_uuid128_t oc_gatt_unsec_req_chr_uuid =
+    BLE_UUID128_INIT(OC_GATT_UNSEC_REQ_CHR_UUID);
 
 /* response characteristic UUID */
 /* E9241982-4580-42C4-8831-95048216B256 */
-static const ble_uuid128_t oc_gatt_rsp_chr_uuid =
-    BLE_UUID128_INIT(0x56, 0xb2, 0x16, 0x82, 0x04, 0x95, 0x31, 0x88,
-                     0xc4, 0x42, 0x80, 0x45, 0x82, 0x19, 0x24, 0xe9);
+static const ble_uuid128_t oc_gatt_unsec_rsp_chr_uuid =
+    BLE_UUID128_INIT(OC_GATT_UNSEC_RSP_CHR_UUID);
+
+/* secure service UUID. */
+/* 0xfe18 */
+static const ble_uuid16_t oc_gatt_sec_svc_uuid =
+    BLE_UUID16_INIT(OC_GATT_SEC_SVC_UUID);
+
+/* secure request characteristic UUID. */
+/* 0x1000 */
+static const ble_uuid16_t oc_gatt_sec_req_chr_uuid =
+    BLE_UUID16_INIT(OC_GATT_SEC_REQ_CHR_UUID);
+
+/* secure response characteristic UUID. */
+/* 0x1001 */
+static const ble_uuid16_t oc_gatt_sec_rsp_chr_uuid =
+    BLE_UUID16_INIT(OC_GATT_SEC_RSP_CHR_UUID);
 
 STATS_SECT_START(oc_ble_stats)
     STATS_SECT_ENTRY(iframe)
@@ -82,52 +91,56 @@ STATS_NAME_END(oc_ble_stats)
 static STAILQ_HEAD(, os_mbuf_pkthdr) oc_ble_reass_q;
 
 #if (MYNEWT_VAL(OC_SERVER) == 1)
-/* ble nmgr attr handle */
-static uint16_t oc_ble_coap_req_handle;
-static uint16_t oc_ble_coap_rsp_handle;
+/*
+ * BLE nmgr attribute handles for service
+ */
+#define OC_BLE_SRV_CNT		2
+static struct {
+    uint16_t req;
+    uint16_t rsp;
+} oc_ble_srv_handles[OC_BLE_SRV_CNT];
 
 static int oc_gatt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-static const struct ble_gatt_svc_def gatt_svr_svcs[] = { {
+static const struct ble_gatt_svc_def oc_gatt_svr_svcs[] = { {
         /* Service: iotivity */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = &oc_gatt_svc_uuid.u,
+        .uuid = &oc_gatt_unsec_svc_uuid.u,
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
                 /* Characteristic: Request */
-                .uuid = &oc_gatt_req_chr_uuid.u,
+                .uuid = &oc_gatt_unsec_req_chr_uuid.u,
                 .access_cb = oc_gatt_chr_access,
                 .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-                .val_handle = &oc_ble_coap_req_handle,
+                .val_handle = &oc_ble_srv_handles[0].req,
             },{
                 /* Characteristic: Response */
-                .uuid = &oc_gatt_rsp_chr_uuid.u,
+                .uuid = &oc_gatt_unsec_rsp_chr_uuid.u,
                 .access_cb = oc_gatt_chr_access,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = &oc_ble_coap_rsp_handle,
+                .val_handle = &oc_ble_srv_handles[0].rsp,
             },{
                 0, /* No more characteristics in this service */
             }
         },
-
+    },{
         /* Service: CoAP-over-BLE */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = &runtime_coap_svc_uuid.u,
+        .uuid = &oc_gatt_sec_svc_uuid.u,
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
                 /* Characteristic: Request */
-                .uuid = &oc_gatt_req_chr_uuid.u,
+                .uuid = &oc_gatt_sec_req_chr_uuid.u,
                 .access_cb = oc_gatt_chr_access,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP |
-                         BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = &oc_ble_coap_req_handle,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+                .val_handle = &oc_ble_srv_handles[1].req,
             },{
                 /* Characteristic: Response */
-                .uuid = &oc_gatt_rsp_chr_uuid.u,
+                .uuid = &oc_gatt_sec_rsp_chr_uuid.u,
                 .access_cb = oc_gatt_chr_access,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = &oc_ble_coap_rsp_handle,
+                .val_handle = &oc_ble_srv_handles[1].rsp,
             },{
                 0, /* No more characteristics in this service */
             }
@@ -138,8 +151,24 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = { {
     },
 };
 
+/*
+ * Look up service index based on characteristic handle from request.
+ */
+static int
+oc_ble_req_attr_to_idx(uint16_t attr_handle)
+{
+    int i;
+
+    for (i = 0; i < OC_BLE_SRV_CNT; i++) {
+        if (oc_ble_srv_handles[i].req == attr_handle) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int
-oc_ble_reass(struct os_mbuf *om1, uint16_t conn_handle)
+oc_ble_reass(struct os_mbuf *om1, uint16_t conn_handle, uint8_t srv_idx)
 {
     struct os_mbuf_pkthdr *pkt1;
     struct oc_endpoint_ble *oe_ble;
@@ -159,7 +188,7 @@ oc_ble_reass(struct os_mbuf *om1, uint16_t conn_handle)
     STAILQ_FOREACH(pkt2, &oc_ble_reass_q, omp_next) {
         om2 = OS_MBUF_PKTHDR_TO_MBUF(pkt2);
         oe_ble = (struct oc_endpoint_ble *)OC_MBUF_ENDPOINT(om2);
-        if (conn_handle == oe_ble->conn_handle) {
+        if (conn_handle == oe_ble->conn_handle && srv_idx == oe_ble->srv_idx) {
             /*
              * Data from same connection. Append.
              */
@@ -195,6 +224,7 @@ oc_ble_reass(struct os_mbuf *om1, uint16_t conn_handle)
         }
         oe_ble = (struct oc_endpoint_ble *)OC_MBUF_ENDPOINT(om2);
         oe_ble->flags = GATT;
+        oe_ble->srv_idx = srv_idx;
         oe_ble->conn_handle = conn_handle;
         pkt2 = OS_MBUF_PKTHDR(om2);
 
@@ -215,13 +245,15 @@ oc_gatt_chr_access(uint16_t conn_handle, uint16_t attr_handle,
 {
     struct os_mbuf *m;
     int rc;
-    (void) attr_handle; /* xxx req should only come in via req handle */
+    int srv_idx;
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
         m = ctxt->om;
 
-        rc = oc_ble_reass(m, conn_handle);
+        srv_idx = oc_ble_req_attr_to_idx(attr_handle);
+        assert(srv_idx >= 0);
+        rc = oc_ble_reass(m, conn_handle, srv_idx);
         if (rc) {
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
@@ -244,15 +276,11 @@ oc_ble_coap_gatt_srv_init(void)
 #if (MYNEWT_VAL(OC_SERVER) == 1)
     int rc;
 
-    rc = ble_gatts_count_cfg(gatt_svr_svcs);
-    if (rc != 0) {
-        return rc;
-    }
+    rc = ble_gatts_count_cfg(oc_gatt_svr_svcs);
+    assert(rc == 0);
 
-    rc = ble_gatts_add_svcs(gatt_svr_svcs);
-    if (rc != 0) {
-        return rc;
-    }
+    rc = ble_gatts_add_svcs(oc_gatt_svr_svcs);
+    assert(rc == 0);
 #endif
     (void)stats_init_and_reg(STATS_HDR(oc_ble_stats),
       STATS_SIZE_INIT_PARMS(oc_ble_stats, STATS_SIZE_32),
@@ -348,6 +376,7 @@ oc_send_buffer_gatt(struct os_mbuf *m)
     struct os_mbuf_pkthdr *pkt;
     uint16_t mtu;
     uint16_t conn_handle;
+    uint16_t attr_handle;
 
     assert(OS_MBUF_USRHDR_LEN(m) >= sizeof(struct oc_endpoint_ble));
     oe = OC_MBUF_ENDPOINT(m);
@@ -362,11 +391,15 @@ oc_send_buffer_gatt(struct os_mbuf *m)
     STATS_INC(oc_ble_stats, oframe);
     STATS_INCN(oc_ble_stats, obytes, OS_MBUF_PKTLEN(m));
 
+    if (oe->oe_ble.srv_idx >= OC_BLE_SRV_CNT) {
+        goto err;
+    }
+    attr_handle = oc_ble_srv_handles[oe->oe_ble.srv_idx].rsp;
+
     mtu = ble_att_mtu(conn_handle);
     if (mtu < 4) {
         oc_ble_coap_conn_del(conn_handle);
-        os_mbuf_free_chain(m);
-        return;
+        goto err;
     }
     mtu -= 3; /* # of bytes for ATT notification base */
 
@@ -378,13 +411,18 @@ oc_send_buffer_gatt(struct os_mbuf *m)
         STATS_INC(oc_ble_stats, oseg);
         pkt = STAILQ_NEXT(OS_MBUF_PKTHDR(m), omp_next);
 
-        ble_gattc_notify_custom(conn_handle, oc_ble_coap_rsp_handle, m);
+        ble_gattc_notify_custom(conn_handle, attr_handle, m);
         if (pkt) {
             m = OS_MBUF_PKTHDR_TO_MBUF(pkt);
         } else {
             break;
         }
     }
+    return;
+
+err:
+    os_mbuf_free_chain(m);
+    STATS_INC(oc_ble_stats, oerr);
 #endif
 }
 

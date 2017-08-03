@@ -42,6 +42,8 @@
 #include "host/ble_hs.h"
 #include "services/gap/ble_svc_gap.h"
 
+#include "oic/oc_gatt.h"
+
 #include "tbb.h"
 
 static int tbb_gap_event(struct ble_gap_event *event, void *arg);
@@ -133,6 +135,12 @@ tbb_advertise(void)
     fields.name = (uint8_t *)name;
     fields.name_len = strlen(name);
     fields.name_is_complete = 1;
+
+    fields.uuids16 = (ble_uuid16_t[]) {
+        BLE_UUID16_INIT(OC_GATT_SEC_SVC_UUID)
+    };
+    fields.num_uuids16 = 1;
+    fields.uuids16_is_complete = 1;
 
     rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {

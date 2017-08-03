@@ -18,12 +18,13 @@
 pkg.name: apps/bleprph
 pkg.type: app
 pkg.description: Simple BLE peripheral application.
-pkg.author: "Apache Mynewt <dev@mynewt.incubator.apache.org>"
+pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
 
 pkg.deps: 
     - boot/split
+    - boot/bootutil
     - kernel/os 
     - mgmt/imgmgr
     - mgmt/newtmgr
@@ -33,7 +34,7 @@ pkg.deps:
     - net/nimble/host/services/ans
     - net/nimble/host/services/gap
     - net/nimble/host/services/gatt
-    - net/nimble/host/store/ram
+    - net/nimble/host/store/config
     - net/nimble/transport/ram
     - sys/console/full
     - sys/log/full

@@ -59,6 +59,10 @@ TEST_CASE(ble_hs_conn_test_direct_connect_success)
 
     TEST_ASSERT(ble_gap_master_in_progress());
 
+    /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
+    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
+
     /* Receive successful connection complete event. */
     memset(&evt, 0, sizeof evt);
     evt.subevent_code = BLE_HCI_LE_SUBEV_CONN_COMPLETE;
@@ -79,7 +83,7 @@ TEST_CASE(ble_hs_conn_test_direct_connect_success)
 
     chan = ble_hs_conn_chan_find_by_scid(conn, BLE_L2CAP_CID_ATT);
     TEST_ASSERT_FATAL(chan != NULL);
-    TEST_ASSERT(chan->my_mtu == BLE_ATT_MTU_PREFERRED_DFLT);
+    TEST_ASSERT(chan->my_mtu == MYNEWT_VAL(BLE_ATT_PREFERRED_MTU));
     TEST_ASSERT(chan->peer_mtu == 0);
 
     ble_hs_unlock();
@@ -112,6 +116,10 @@ TEST_CASE(ble_hs_conn_test_direct_connectable_success)
     TEST_ASSERT(!ble_gap_master_in_progress());
     TEST_ASSERT(ble_gap_adv_active());
 
+    /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
+    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
+
     /* Receive successful connection complete event. */
     memset(&evt, 0, sizeof evt);
     evt.subevent_code = BLE_HCI_LE_SUBEV_CONN_COMPLETE;
@@ -133,7 +141,7 @@ TEST_CASE(ble_hs_conn_test_direct_connectable_success)
 
     chan = ble_hs_conn_chan_find_by_scid(conn, BLE_L2CAP_CID_ATT);
     TEST_ASSERT_FATAL(chan != NULL);
-    TEST_ASSERT(chan->my_mtu == BLE_ATT_MTU_PREFERRED_DFLT);
+    TEST_ASSERT(chan->my_mtu == MYNEWT_VAL(BLE_ATT_PREFERRED_MTU));
     TEST_ASSERT(chan->peer_mtu == 0);
 
     ble_hs_unlock();
@@ -173,6 +181,10 @@ TEST_CASE(ble_hs_conn_test_undirect_connectable_success)
     TEST_ASSERT(!ble_gap_master_in_progress());
     TEST_ASSERT(ble_gap_adv_active());
 
+    /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
+    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
+
     /* Receive successful connection complete event. */
     memset(&evt, 0, sizeof evt);
     evt.subevent_code = BLE_HCI_LE_SUBEV_CONN_COMPLETE;
@@ -194,7 +206,7 @@ TEST_CASE(ble_hs_conn_test_undirect_connectable_success)
 
     chan = ble_hs_conn_chan_find_by_scid(conn, BLE_L2CAP_CID_ATT);
     TEST_ASSERT_FATAL(chan != NULL);
-    TEST_ASSERT(chan->my_mtu == BLE_ATT_MTU_PREFERRED_DFLT);
+    TEST_ASSERT(chan->my_mtu == MYNEWT_VAL(BLE_ATT_PREFERRED_MTU));
     TEST_ASSERT(chan->peer_mtu == 0);
 
     ble_hs_unlock();

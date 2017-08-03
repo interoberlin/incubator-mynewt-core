@@ -23,6 +23,12 @@
 #include <hal/hal_bsp.h>
 #include <mcu/mips_hal.h>
 
+#if MYNEWT_VAL(TIMER_0) || MYNEWT_VAL(TIMER_1) || MYNEWT_VAL(TIMER_2) || \
+    MYNEWT_VAL(TIMER_3) || MYNEWT_VAL(TIMER_4) || MYNEWT_VAL(TIMER_5) || \
+    MYNEWT_VAL(TIMER_6) || MYNEWT_VAL(TIMER_7)
+#include "hal/hal_timer.h"
+#endif
+
 #if MYNEWT_VAL(UART_0) || MYNEWT_VAL(UART_1) || MYNEWT_VAL(UART_2) || \
     MYNEWT_VAL(UART_3) || MYNEWT_VAL(UART_4) || MYNEWT_VAL(UART_5)
 #include <uart/uart.h>
@@ -122,6 +128,19 @@ static const struct mips_spi_cfg spi3_cfg = {
 };
 #endif
 
+#if MYNEWT_VAL(I2C_3)
+/*
+ * I2C 3 (J6 connector)
+ *   SCL -> RG8
+ *   SDA -> RG7
+ */
+static const struct mips_i2c_cfg hal_i2c3_cfg = {
+    .scl = MCU_GPIO_PORTG(8),
+    .sda = MCU_GPIO_PORTG(7),
+    .frequency = 400000
+};
+#endif
+
 const struct hal_flash *
 hal_bsp_flash_dev(uint8_t id)
 {
@@ -132,6 +151,46 @@ void
 hal_bsp_init(void)
 {
     int rc;
+
+    #if MYNEWT_VAL(TIMER_0)
+        rc = hal_timer_init(0, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_1)
+        rc = hal_timer_init(1, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_2)
+        rc = hal_timer_init(2, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_3)
+        rc = hal_timer_init(3, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_4)
+        rc = hal_timer_init(4, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_5)
+        rc = hal_timer_init(5, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_6)
+        rc = hal_timer_init(6, NULL);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(TIMER_7)
+        rc = hal_timer_init(7, NULL);
+        assert(rc == 0);
+    #endif
 
     #if MYNEWT_VAL(UART_0)
         rc = os_dev_create((struct os_dev *) &os_bsp_uart0, "uart0",
@@ -196,6 +255,11 @@ hal_bsp_init(void)
 
     #if MYNEWT_VAL(SPI_5_MASTER)
         rc = hal_spi_init(5, NULL, HAL_SPI_TYPE_MASTER);
+        assert(rc == 0);
+    #endif
+
+    #if MYNEWT_VAL(I2C_3)
+        rc = hal_i2c_init(3, &hal_i2c3_cfg);
         assert(rc == 0);
     #endif
 
