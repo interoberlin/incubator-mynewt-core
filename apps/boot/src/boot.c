@@ -54,7 +54,14 @@ main(void)
     rc = boot_go(&rsp);
     assert(rc == 0);
 
-    hal_system_start((void *)(rsp.br_image_addr + rsp.br_hdr->ih_hdr_size));
+    /*
+     * The lines below allow app ELFs to be loaded via GDB
+     * skipping the 'newt create-image' step.
+     */
+    uint32_t app0_origin = 0x00008000;
+    uint8_t  app0_header_size = 0x20;
+    hal_system_start((void*) (app0_origin + app0_header_size));
+//    hal_system_start((void *)(rsp.br_image_addr + rsp.br_hdr->ih_hdr_size));
 
     return 0;
 }
