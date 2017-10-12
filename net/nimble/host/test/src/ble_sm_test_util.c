@@ -531,7 +531,8 @@ ble_sm_test_util_init_good(struct ble_sm_test_params *params,
     ble_sm_dbg_set_next_csrk(out_us->sign_info->sig_key);
 
     if (out_us->public_key != NULL) {
-        ble_sm_dbg_set_sc_keys(out_us->public_key->x, params->our_priv_key);
+        ble_sm_dbg_set_sc_keys((uint8_t *)out_us->public_key,
+                               params->our_priv_key);
     }
 
     ble_hs_test_util_create_rpa_conn(2, out_us->addr_type, out_us->rpa,
@@ -1102,8 +1103,6 @@ ble_sm_test_util_verify_tx_public_key(
     struct ble_sm_public_key cmd;
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_PAIR_PUBLIC_KEY,
                                         sizeof(struct ble_sm_public_key));
     ble_sm_public_key_parse(om->om_data, om->om_len, &cmd);
@@ -1132,7 +1131,6 @@ ble_sm_test_util_verify_tx_enc_info(struct ble_sm_enc_info *exp_cmd)
     struct ble_sm_enc_info cmd;
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_ENC_INFO,
                                         sizeof(struct ble_sm_enc_info));
     ble_sm_enc_info_parse(om->om_data, om->om_len, &cmd);
@@ -1149,7 +1147,6 @@ ble_sm_test_util_verify_tx_master_id(struct ble_sm_master_id *exp_cmd)
     struct ble_sm_master_id cmd;
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_MASTER_ID,
                                         sizeof(struct ble_sm_master_id));
     ble_sm_master_id_parse(om->om_data, om->om_len, &cmd);
@@ -1164,7 +1161,6 @@ ble_sm_test_util_verify_tx_id_info(struct ble_sm_id_info *exp_cmd)
     struct ble_sm_id_info cmd;
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_IDENTITY_INFO,
                                         sizeof(struct ble_sm_id_info));
     ble_sm_id_info_parse(om->om_data, om->om_len, &cmd);
@@ -1189,7 +1185,6 @@ ble_sm_test_util_verify_tx_id_addr_info(struct ble_sm_id_addr_info *exp_cmd)
 
     TEST_ASSERT_FATAL(rc == 0);
 
-    ble_hs_test_util_tx_all();
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_IDENTITY_ADDR_INFO,
                                         sizeof(struct ble_sm_id_addr_info));
     ble_sm_id_addr_info_parse(om->om_data, om->om_len, &cmd);
@@ -1205,7 +1200,6 @@ ble_sm_test_util_verify_tx_sign_info(struct ble_sm_sign_info *exp_cmd)
     struct ble_sm_sign_info cmd;
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_SIGN_INFO,
                                         sizeof(struct ble_sm_sign_info));
     ble_sm_sign_info_parse(om->om_data, om->om_len, &cmd);
@@ -1221,8 +1215,6 @@ ble_sm_test_util_verify_tx_sec_req(struct ble_sm_sec_req *exp_cmd)
 {
     struct ble_sm_sec_req cmd;
     struct os_mbuf *om;
-
-    ble_hs_test_util_tx_all();
 
     om = ble_sm_test_util_verify_tx_hdr(BLE_SM_OP_SEC_REQ, sizeof(struct ble_sm_sec_req));
     ble_sm_sec_req_parse(om->om_data, om->om_len, &cmd);
@@ -1472,7 +1464,6 @@ ble_sm_test_util_io_check_post(struct ble_sm_test_passkey_info *passkey_info,
     }
 
     /* Ensure response not sent until user performs IO. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_queue_sz() == 0);
 
     rc = ble_sm_inject_io(2, &passkey_info->passkey);
@@ -1773,7 +1764,6 @@ ble_sm_test_util_us_bonding_good(int send_enc_req, uint8_t our_addr_type,
     }
 
     /* Ensure we sent the expected start encryption command. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_start_enc(2, rand_num, ediv, ltk);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -1839,7 +1829,6 @@ ble_sm_test_util_peer_fail_inval(
     TEST_ASSERT(ble_sm_num_procs() == 0);
 
     /* Ensure we sent the expected pair fail. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_fail(pair_fail);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 0);
@@ -1900,7 +1889,6 @@ ble_sm_test_util_peer_lgcy_fail_confirm(
     ble_sm_test_util_io_inject_bad(2, BLE_SM_IOACT_NONE);
 
     /* Ensure we sent the expected pair response. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_rsp(pair_rsp);
     TEST_ASSERT(ble_sm_num_procs() == 1);
     ble_sm_test_util_io_inject_bad(2, BLE_SM_IOACT_NONE);
@@ -1911,7 +1899,6 @@ ble_sm_test_util_peer_lgcy_fail_confirm(
     ble_sm_test_util_io_inject_bad(2, BLE_SM_IOACT_NONE);
 
     /* Ensure we sent the expected pair confirm. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_confirm(confirm_rsp);
     TEST_ASSERT(ble_sm_num_procs() == 1);
     ble_sm_test_util_io_inject_bad(2, BLE_SM_IOACT_NONE);
@@ -1921,7 +1908,6 @@ ble_sm_test_util_peer_lgcy_fail_confirm(
         2, random_req, BLE_HS_SM_US_ERR(BLE_SM_ERR_CONFIRM_MISMATCH));
 
     /* Ensure we sent the expected pair fail. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_fail(fail_rsp);
 
     /* The proc should now be freed. */
@@ -2048,9 +2034,19 @@ ble_sm_test_util_rx_keys(struct ble_sm_test_params *params,
         ble_sm_test_util_rx_master_id(2, peer_master_id, 0);
     }
     if (peer_key_dist & BLE_SM_PAIR_KEY_DIST_ID) {
-        ble_hs_test_util_set_ack(
-            ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
-                                        BLE_HCI_OCF_LE_ADD_RESOLV_LIST), 0);
+
+        ble_hs_test_util_set_ack_seq(((struct ble_hs_test_util_phony_ack[]) {
+            {
+                .opcode = ble_hs_hci_util_opcode_join(
+                                BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_ADD_RESOLV_LIST),
+            } ,
+            {
+                .opcode = ble_hs_hci_util_opcode_join(
+                                BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PRIVACY_MODE),
+            },
+            { 0 }
+        }));
+
         ble_sm_test_util_rx_id_info(2, peer_id_info, 0);
         ble_sm_test_util_rx_id_addr_info(2, peer_id_addr_info, 0);
     }
@@ -2127,7 +2123,6 @@ ble_sm_test_util_us_lgcy_good_once_no_init(
     }
 
     /* Ensure we sent the expected pair request. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_req(our_entity->pair_cmd);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2143,7 +2138,6 @@ ble_sm_test_util_us_lgcy_good_once_no_init(
                                BLE_SM_PROC_STATE_CONFIRM);
 
     /* Ensure we sent the expected pair confirm. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_confirm(our_entity->confirms);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2156,7 +2150,6 @@ ble_sm_test_util_us_lgcy_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected pair random. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_random(our_entity->randoms);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2169,7 +2162,6 @@ ble_sm_test_util_us_lgcy_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected start encryption command. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_start_enc(2, 0, 0, params->stk);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2273,7 +2265,6 @@ ble_sm_test_util_peer_lgcy_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected pair response. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_rsp(our_entity->pair_cmd);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2292,7 +2283,6 @@ ble_sm_test_util_peer_lgcy_good_once_no_init(
                                    BLE_SM_PROC_STATE_CONFIRM);
 
     /* Ensure we sent the expected pair confirm. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_confirm(our_entity->confirms);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2305,7 +2295,6 @@ ble_sm_test_util_peer_lgcy_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected pair random. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_random(our_entity->randoms);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2439,7 +2428,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
     }
 
     /* Ensure we sent the expected pair request. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_req(our_entity->pair_cmd);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2452,7 +2440,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected public key. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_public_key(our_entity->public_key);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2487,7 +2474,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
             }
 
             /* Ensure we sent the expected pair confirm. */
-            ble_hs_test_util_tx_all();
             ble_sm_test_util_verify_tx_pair_confirm(our_entity->confirms + i);
             TEST_ASSERT(!conn->bhc_sec_state.encrypted);
             TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2502,7 +2488,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
         ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
         /* Ensure we sent the expected pair random. */
-        ble_hs_test_util_tx_all();
         ble_sm_test_util_verify_tx_pair_random(our_entity->randoms + i);
         TEST_ASSERT(!conn->bhc_sec_state.encrypted);
         TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2519,7 +2504,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
                                BLE_SM_PROC_STATE_DHKEY_CHECK);
 
     /* Ensure we sent the expected dhkey check. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_dhkey_check(our_entity->dhkey_check);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2532,7 +2516,6 @@ ble_sm_test_util_us_sc_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected start encryption command. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_start_enc(2, 0, 0, params->ltk);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2641,7 +2624,6 @@ ble_sm_test_util_peer_sc_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected pair response. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_rsp(our_entity->pair_cmd);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2654,7 +2636,6 @@ ble_sm_test_util_peer_sc_good_once_no_init(
     ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
     /* Ensure we sent the expected public key. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_public_key(our_entity->public_key);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2696,7 +2677,6 @@ ble_sm_test_util_peer_sc_good_once_no_init(
         }
 
         /* Ensure we sent the expected pair confirm. */
-        ble_hs_test_util_tx_all();
         ble_sm_test_util_verify_tx_pair_confirm(our_entity->confirms + i);
         TEST_ASSERT(!conn->bhc_sec_state.encrypted);
         TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2709,7 +2689,6 @@ ble_sm_test_util_peer_sc_good_once_no_init(
         ble_sm_test_util_io_inject_bad(2, params->passkey_info.passkey.action);
 
         /* Ensure we sent the expected pair random. */
-        ble_hs_test_util_tx_all();
         ble_sm_test_util_verify_tx_pair_random(our_entity->randoms + i);
         TEST_ASSERT(!conn->bhc_sec_state.encrypted);
         TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2730,7 +2709,6 @@ ble_sm_test_util_peer_sc_good_once_no_init(
                                    BLE_SM_PROC_STATE_DHKEY_CHECK);
 
     /* Ensure we sent the expected dhkey check. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_dhkey_check(our_entity->dhkey_check);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2870,7 +2848,6 @@ ble_sm_test_util_us_fail_inval(struct ble_sm_test_params *params)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we sent the expected pair request. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_req(&params->pair_req);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 1);
@@ -2883,7 +2860,6 @@ ble_sm_test_util_us_fail_inval(struct ble_sm_test_params *params)
     TEST_ASSERT(ble_sm_num_procs() == 0);
 
     /* Ensure we sent the expected pair fail. */
-    ble_hs_test_util_tx_all();
     ble_sm_test_util_verify_tx_pair_fail(&params->pair_fail);
     TEST_ASSERT(!conn->bhc_sec_state.encrypted);
     TEST_ASSERT(ble_sm_num_procs() == 0);
@@ -2937,7 +2913,6 @@ ble_sm_test_util_repeat_pairing(struct ble_sm_test_params *params, int sc)
 
     /* Receive a pair request from the peer. */
     ble_sm_test_util_rx_pair_req(2, peer_entity.pair_cmd, BLE_HS_EALREADY);
-    ble_hs_test_util_tx_all();
 
     /* Verify repeat pairing event got reported twice. */
     TEST_ASSERT(ble_sm_test_repeat_pairing.num_calls == 2);
@@ -2946,7 +2921,6 @@ ble_sm_test_util_repeat_pairing(struct ble_sm_test_params *params, int sc)
     TEST_ASSERT(ble_sm_num_procs() == 0);
 
     /* Verify no SM messages were sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /*** Receive another pairing request. */

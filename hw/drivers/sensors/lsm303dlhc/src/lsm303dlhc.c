@@ -30,16 +30,9 @@
 #include "sensor/mag.h"
 #include "lsm303dlhc/lsm303dlhc.h"
 #include "lsm303dlhc_priv.h"
-
-#if MYNEWT_VAL(LSM303DLHC_LOG)
 #include "log/log.h"
-#endif
-
-#if MYNEWT_VAL(LSM303DLHC_STATS)
 #include "stats/stats.h"
-#endif
 
-#if MYNEWT_VAL(LSM303DLHC_STATS)
 /* Define the stats section and records */
 STATS_SECT_START(lsm303dlhc_stat_section)
     STATS_SECT_ENTRY(samples_acc_2g)
@@ -74,17 +67,11 @@ STATS_NAME_END(lsm303dlhc_stat_section)
 
 /* Global variable used to hold stats data */
 STATS_SECT_DECL(lsm303dlhc_stat_section) g_lsm303dlhcstats;
-#endif
 
-#if MYNEWT_VAL(LSM303DLHC_LOG)
 #define LOG_MODULE_LSM303DLHC (303)
 #define LSM303DLHC_INFO(...)  LOG_INFO(&_log, LOG_MODULE_LSM303DLHC, __VA_ARGS__)
 #define LSM303DLHC_ERR(...)   LOG_ERROR(&_log, LOG_MODULE_LSM303DLHC, __VA_ARGS__)
 static struct log _log;
-#else
-#define LSM303DLHC_INFO(...)
-#define LSM303DLHC_ERR(...)
-#endif
 
 /* Exports for the sensor API */
 static int lsm303dlhc_sensor_read(struct sensor *, sensor_type_t,
@@ -125,9 +112,7 @@ lsm303dlhc_write8(struct sensor_itf *itf, uint8_t addr, uint8_t reg,
     if (rc) {
         LSM303DLHC_ERR("Failed to write to 0x%02X:0x%02X with value 0x%02X\n",
                        addr, reg, value);
-#if MYNEWT_VAL(LSM303DLHC_STATS)
         STATS_INC(g_lsm303dlhcstats, errors);
-#endif
     }
 
     return rc;
@@ -162,9 +147,7 @@ lsm303dlhc_read8(struct sensor_itf *itf, uint8_t addr, uint8_t reg,
                               OS_TICKS_PER_SEC / 10, 1);
     if (rc) {
         LSM303DLHC_ERR("I2C access failed at address 0x%02X\n", addr);
-#if MYNEWT_VAL(LSM303DLHC_STATS)
         STATS_INC(g_lsm303dlhcstats, errors);
-#endif
         goto err;
     }
 
@@ -175,9 +158,7 @@ lsm303dlhc_read8(struct sensor_itf *itf, uint8_t addr, uint8_t reg,
     *value = payload;
     if (rc) {
         LSM303DLHC_ERR("Failed to read from 0x%02X:0x%02X\n", addr, reg);
-#if MYNEWT_VAL(LSM303DLHC_STATS)
         STATS_INC(g_lsm303dlhcstats, errors);
-#endif
     }
 
 err:
@@ -215,9 +196,7 @@ lsm303dlhc_read48(struct sensor_itf *itf, uint8_t addr, uint8_t reg,
                               OS_TICKS_PER_SEC / 10, 1);
     if (rc) {
         LSM303DLHC_ERR("I2C access failed at address 0x%02X\n", addr);
-#if MYNEWT_VAL(LSM303DLHC_STATS)
         STATS_INC(g_lsm303dlhcstats, errors);
-#endif
         goto err;
     }
 
@@ -229,9 +208,7 @@ lsm303dlhc_read48(struct sensor_itf *itf, uint8_t addr, uint8_t reg,
 
     if (rc) {
         LSM303DLHC_ERR("Failed to read from 0x%02X:0x%02X\n", addr, reg);
-#if MYNEWT_VAL(LSM303DLHC_STATS)
         STATS_INC(g_lsm303dlhcstats, errors);
-#endif
         goto err;
     }
 
@@ -266,13 +243,10 @@ lsm303dlhc_init(struct os_dev *dev, void *arg)
 
     lsm->cfg.mask = SENSOR_TYPE_ALL;
 
-#if MYNEWT_VAL(LSM303DLHC_LOG)
     log_register(dev->od_name, &_log, &log_console_handler, NULL, LOG_SYSLEVEL);
-#endif
 
     sensor = &lsm->sensor;
 
-#if MYNEWT_VAL(LSM303DLHC_STATS)
     /* Initialise the stats entry */
     rc = stats_init(
         STATS_HDR(g_lsm303dlhcstats),
@@ -282,7 +256,6 @@ lsm303dlhc_init(struct os_dev *dev, void *arg)
     /* Register the entry with the stats registry */
     rc = stats_register(dev->od_name, STATS_HDR(g_lsm303dlhcstats));
     SYSINIT_PANIC_ASSERT(rc == 0);
-#endif
 
     rc = sensor_init(sensor, dev);
     if (rc != 0) {
@@ -290,7 +263,7 @@ lsm303dlhc_init(struct os_dev *dev, void *arg)
     }
 
     /* Add the accelerometer/magnetometer driver */
-    rc = sensor_set_driver(sensor, SENSOR_TYPE_LINEAR_ACCEL |
+    rc = sensor_set_driver(sensor, SENSOR_TYPE_ACCELEROMETER |
             SENSOR_TYPE_MAGNETIC_FIELD,
             (struct sensor_driver *) &g_lsm303dlhc_sensor_driver);
     if (rc != 0) {
@@ -408,7 +381,7 @@ lsm303dlhc_sensor_read(struct sensor *sensor, sensor_type_t type,
     }databuf;
 
     /* If the read isn't looking for accel or mag data, don't do anything. */
-    if (!(type & SENSOR_TYPE_LINEAR_ACCEL) &&
+    if (!(type & SENSOR_TYPE_ACCELEROMETER) &&
        (!(type & SENSOR_TYPE_MAGNETIC_FIELD))) {
         rc = SYS_EINVAL;
         goto err;
@@ -418,7 +391,7 @@ lsm303dlhc_sensor_read(struct sensor *sensor, sensor_type_t type,
     lsm = (struct lsm303dlhc *) SENSOR_GET_DEVICE(sensor);
 
     /* Get a new accelerometer sample */
-    if (type & SENSOR_TYPE_LINEAR_ACCEL) {
+    if (type & SENSOR_TYPE_ACCELEROMETER) {
         x = y = z = 0;
         rc = lsm303dlhc_read48(itf, lsm->cfg.acc_addr,
                                LSM303DLHC_REGISTER_ACCEL_OUT_X_L_A | 0x80,
@@ -435,27 +408,19 @@ lsm303dlhc_sensor_read(struct sensor *sensor, sensor_type_t type,
         /* Determine mg per lsb based on range */
         switch(lsm->cfg.accel_range) {
             case LSM303DLHC_ACCEL_RANGE_2:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_acc_2g);
-#endif
                 mg_lsb = 0.001F;
                 break;
             case LSM303DLHC_ACCEL_RANGE_4:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_acc_4g);
-#endif
                 mg_lsb = 0.002F;
                 break;
             case LSM303DLHC_ACCEL_RANGE_8:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_acc_8g);
-#endif
                 mg_lsb = 0.004F;
                 break;
             case LSM303DLHC_ACCEL_RANGE_16:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_acc_16g);
-#endif
                 mg_lsb = 0.012F;
                 break;
             default:
@@ -475,7 +440,7 @@ lsm303dlhc_sensor_read(struct sensor *sensor, sensor_type_t type,
         databuf.sad.sad_z_is_valid = 1;
 
         /* Call data function */
-        rc = data_func(sensor, data_arg, &databuf.sad, SENSOR_TYPE_LINEAR_ACCEL);
+        rc = data_func(sensor, data_arg, &databuf.sad, SENSOR_TYPE_ACCELEROMETER);
         if (rc != 0) {
             goto err;
         }
@@ -499,51 +464,37 @@ lsm303dlhc_sensor_read(struct sensor *sensor, sensor_type_t type,
         /* Determine gauss per lsb based on gain */
         switch (lsm->cfg.mag_gain) {
             case LSM303DLHC_MAG_GAIN_1_3:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_1_3g);
-#endif
                 gauss_lsb_xy = 1100;
                 gauss_lsb_z = 980;
                 break;
             case LSM303DLHC_MAG_GAIN_1_9:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_1_9g);
-#endif
                 gauss_lsb_xy = 855;
                 gauss_lsb_z = 760;
                 break;
             case LSM303DLHC_MAG_GAIN_2_5:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_2_5g);
-#endif
                 gauss_lsb_xy = 670;
                 gauss_lsb_z = 600;
                 break;
             case LSM303DLHC_MAG_GAIN_4_0:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_4_0g);
-#endif
                 gauss_lsb_xy = 450;
                 gauss_lsb_z = 400;
                 break;
             case LSM303DLHC_MAG_GAIN_4_7:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_4_7g);
-#endif
                 gauss_lsb_xy = 400;
                 gauss_lsb_z = 355;
                 break;
             case LSM303DLHC_MAG_GAIN_5_6:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_5_6g);
-#endif
                 gauss_lsb_xy = 330;
                 gauss_lsb_z = 295;
                 break;
             case LSM303DLHC_MAG_GAIN_8_1:
-#if MYNEWT_VAL(LSM303DLHC_STATS)
                 STATS_INC(g_lsm303dlhcstats, samples_mag_8_1g);
-#endif
                 gauss_lsb_xy = 230;
                 gauss_lsb_z = 205;
                 break;
@@ -582,7 +533,7 @@ lsm303dlhc_sensor_get_config(struct sensor *sensor, sensor_type_t type,
 {
     int rc;
 
-    if ((type != SENSOR_TYPE_LINEAR_ACCEL) &&
+    if ((type != SENSOR_TYPE_ACCELEROMETER) &&
         (type != SENSOR_TYPE_MAGNETIC_FIELD)) {
         rc = SYS_EINVAL;
         goto err;

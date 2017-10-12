@@ -17,10 +17,21 @@
 # under the License.
 #
 
-syscfg.defs:
-    LIS2DH12_LOG:
-        description: 'Enable LIS2DH12 logging'
-        value: 0
-    LIS2DH12_STATS:
-        description: 'Enable LIS2DH12 statistics'
-        value: 0
+pkg.name: hw/drivers/sensors/mpu6050
+pkg.description: Driver for the mpu6050 3 axis accel/gyro
+pkg.author: "Julian Ingram"
+pkg.keywords:
+    - accelerometer
+    - gyroscope
+    - i2c
+    - sensor
+    - invensense
+
+pkg.deps:
+    - "@apache-mynewt-core/hw/hal"
+    - "@apache-mynewt-core/kernel/os"
+    - "@apache-mynewt-core/hw/sensor"
+
+pkg.req_apis:
+    - stats
+    - log

@@ -278,7 +278,6 @@ ble_gap_terminate_cb(struct ble_gap_event *event, void *arg)
     return 0;
 }
 
-
 static void
 ble_gap_terminate_test_task_handler(void *arg)
 {
@@ -368,7 +367,7 @@ static void
 ble_os_test_app_task_handler(void *arg)
 {
     while (1) {
-        os_eventq_run(&ble_hs_test_util_evq);
+        os_eventq_run(os_eventq_dflt_get());
     }
 }
 

@@ -175,6 +175,7 @@ STATS_NAME_START(ble_ll_stats)
     STATS_NAME(ble_ll_stats, rx_aux_connect_rsp)
     STATS_NAME(ble_ll_stats, adv_txg)
     STATS_NAME(ble_ll_stats, adv_late_starts)
+    STATS_NAME(ble_ll_stats, adv_resched_pdu_fail)
     STATS_NAME(ble_ll_stats, sched_state_conn_errs)
     STATS_NAME(ble_ll_stats, sched_state_adv_errs)
     STATS_NAME(ble_ll_stats, scan_starts)
@@ -193,6 +194,7 @@ STATS_NAME_START(ble_ll_stats)
     STATS_NAME(ble_ll_stats, aux_scan_rsp_err)
     STATS_NAME(ble_ll_stats, aux_chain_cnt)
     STATS_NAME(ble_ll_stats, aux_chain_err)
+    STATS_NAME(ble_ll_stats, adv_evt_dropped)
 STATS_NAME_END(ble_ll_stats)
 
 static void ble_ll_event_rx_pkt(struct os_event *ev);
@@ -204,7 +206,7 @@ static void ble_ll_event_dbuf_overflow(struct os_event *ev);
 /* TODO: This is for testing. Check it we really need it */
 #define BLE_LL_STACK_SIZE   (128)
 #else
-#define BLE_LL_STACK_SIZE   (80)
+#define BLE_LL_STACK_SIZE   (90)
 #endif
 
 struct os_task g_ble_ll_task;
@@ -720,7 +722,7 @@ ble_ll_rx_pkt_in(void)
             ble_ll_adv_rx_pkt_in(pdu_type, rxbuf, ble_hdr);
             break;
         case BLE_LL_STATE_SCANNING:
-            ble_ll_scan_rx_pkt_in(pdu_type, rxbuf, ble_hdr);
+            ble_ll_scan_rx_pkt_in(pdu_type, m, ble_hdr);
             break;
         case BLE_LL_STATE_INITIATING:
             ble_ll_init_rx_pkt_in(pdu_type, rxbuf, ble_hdr);
@@ -1241,12 +1243,12 @@ ble_ll_seed_prng(void)
     srand(seed);
 }
 
-#if (MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY) || MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY))
 uint32_t
 ble_ll_pdu_tx_time_get(uint16_t payload_len, int phy_mode)
 {
     uint32_t usecs;
 
+#if (BLE_LL_BT5_PHY_SUPPORTED)
     if (phy_mode == BLE_PHY_MODE_1M) {
         /* 8 usecs per byte */
         usecs = payload_len << 3;
@@ -1264,11 +1266,13 @@ ble_ll_pdu_tx_time_get(uint16_t payload_len, int phy_mode)
     }
 
     usecs += g_ble_ll_pdu_header_tx_time[phy_mode];
+#else
+    usecs = (((payload_len) + BLE_LL_PDU_HDR_LEN + BLE_LL_ACC_ADDR_LEN
+            + BLE_LL_PREAMBLE_LEN + BLE_LL_CRC_LEN) << 3);
+#endif
 
     return usecs;
-
 }
-#endif
 
 uint16_t
 ble_ll_pdu_max_tx_octets_get(uint32_t usecs, int phy_mode)
@@ -1280,9 +1284,20 @@ ble_ll_pdu_max_tx_octets_get(uint32_t usecs, int phy_mode)
 
     header_tx_time = g_ble_ll_pdu_header_tx_time[phy_mode];
 
+    /*
+     * Current conn max tx time can be too short to even send a packet header
+     * and this can happen if we changed connection form uncoded to coded phy.
+     * However, the lower bound for conn max tx time (all of them) depends on
+     * current phy (uncoded/coded) but it always allows to send at least 27
+     * bytes of payload thus we alwyas return at least 27 from here.
+     *
+     * Reference:
+     * Core v5.0, Vol 6, Part B, section 4.5.10
+     * see connEffectiveMaxTxTime and connEffectiveMaxRxTime definitions
+     */
+
     if (usecs < header_tx_time) {
-        // XXX: this is obviously incorrect, what should we do?
-        return 0;
+        return 27;
     }
 
     usecs -= header_tx_time;
@@ -1303,7 +1318,8 @@ ble_ll_pdu_max_tx_octets_get(uint32_t usecs, int phy_mode)
         assert(0);
     }
 
-    return octets;
+    /* see comment at the beginning */
+    return max(27, octets);
 }
 
 /**

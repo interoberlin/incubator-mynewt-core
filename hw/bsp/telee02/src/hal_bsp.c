@@ -26,6 +26,7 @@
 #include "sysflash/sysflash.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
+#include "hal/hal_system.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_flash.h"
 #include "hal/hal_spi.h"
@@ -72,14 +73,6 @@ static const struct nrf52_hal_spi_cfg os_bsp_spi0m_cfg = {
     .sck_pin      = 25,
     .mosi_pin     = 23,
     .miso_pin     = 24,
-};
-#endif
-
-#if MYNEWT_VAL(I2C_0)
-static const struct nrf52_hal_i2c_cfg hal_i2c_cfg = {
-    .scl_pin = 28,
-    .sda_pin = 26,
-    .i2c_frequency = 100    /* 100 kHz */
 };
 #endif
 
@@ -150,6 +143,10 @@ hal_bsp_init(void)
     int rc;
 
     (void)rc;
+
+    /* Make sure system clocks have started */
+    hal_system_clock_start();
+
 #if MYNEWT_VAL(TIMER_0)
     rc = hal_timer_init(0, NULL);
     assert(rc == 0);
@@ -180,11 +177,6 @@ hal_bsp_init(void)
     assert(rc == 0);
 #endif
 
-#if MYNEWT_VAL(I2C_0)
-    rc = hal_i2c_init(0, (void *)&hal_i2c_cfg);
-    assert(rc == 0);
-#endif
-
 #if MYNEWT_VAL(SPI_0_MASTER)
     rc = hal_spi_init(0, (void *)&os_bsp_spi0m_cfg, HAL_SPI_TYPE_MASTER);
     assert(rc == 0);
@@ -207,5 +199,10 @@ hal_bsp_init(void)
      * Could probably set this as a gpio input with pull-down but for now
      * make it an output and set it low.
      */
-    hal_gpio_init_out(SX1276_NRESET, 0);
+    rc = hal_gpio_init_out(SX1276_NRESET, 0);
+    assert(rc == 0);
+
+    // Enable the external antenna.
+    rc = hal_gpio_init_out(SX1276_ANT_HF_CTRL, 1);
+    assert(rc == 0);
 }

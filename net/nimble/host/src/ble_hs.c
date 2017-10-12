@@ -76,7 +76,6 @@ static struct os_callout ble_hs_timer_timer;
 static struct os_eventq *ble_hs_evq;
 
 static struct os_mqueue ble_hs_rx_q;
-static struct os_mqueue ble_hs_tx_q;
 
 static struct os_mutex ble_hs_mutex;
 
@@ -103,9 +102,11 @@ STATS_NAME_START(ble_hs_stats)
     STATS_NAME(ble_hs_stats, hci_timeout)
     STATS_NAME(ble_hs_stats, reset)
     STATS_NAME(ble_hs_stats, sync)
+    STATS_NAME(ble_hs_stats, pvcy_add_entry)
+    STATS_NAME(ble_hs_stats, pvcy_add_entry_fail)
 STATS_NAME_END(ble_hs_stats)
 
-static struct os_eventq *
+struct os_eventq *
 ble_hs_evq_get(void)
 {
     return ble_hs_evq;
@@ -121,7 +122,7 @@ ble_hs_evq_get(void)
 void
 ble_hs_evq_set(struct os_eventq *evq)
 {
-    os_eventq_designate(&ble_hs_evq, evq, &ble_hs_ev_start);
+    ble_hs_evq = evq;
 }
 
 int
@@ -185,20 +186,6 @@ ble_hs_unlock(void)
 }
 
 void
-ble_hs_process_tx_data_queue(void)
-{
-    struct os_mbuf *om;
-
-    while ((om = os_mqueue_get(&ble_hs_tx_q)) != NULL) {
-#if BLE_MONITOR
-        ble_monitor_send_om(BLE_MONITOR_OPCODE_ACL_TX_PKT, om);
-#endif
-
-        ble_hci_trans_hs_acl_tx(om);
-    }
-}
-
-void
 ble_hs_process_rx_data_queue(void)
 {
     struct os_mbuf *om;
@@ -212,12 +199,82 @@ ble_hs_process_rx_data_queue(void)
     }
 }
 
+static int
+ble_hs_wakeup_tx_conn(struct ble_hs_conn *conn)
+{
+    struct os_mbuf_pkthdr *omp;
+    struct os_mbuf *om;
+    int rc;
+
+    while ((omp = STAILQ_FIRST(&conn->bhc_tx_q)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->bhc_tx_q, omp_next);
+
+        om = OS_MBUF_PKTHDR_TO_MBUF(omp);
+        rc = ble_hs_hci_acl_tx_now(conn, &om);
+        if (rc == BLE_HS_EAGAIN) {
+            /* Controller is at capacity.  This packet will be the first to
+             * get transmitted next time around.
+             */
+            STAILQ_INSERT_HEAD(&conn->bhc_tx_q, OS_MBUF_PKTHDR(om),
+                               omp_next);
+            return BLE_HS_EAGAIN;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Schedules the transmission of all queued ACL data packets to the controller.
+ */
+void
+ble_hs_wakeup_tx(void)
+{
+    struct ble_hs_conn *conn;
+    int rc;
+
+    ble_hs_lock();
+
+    /* If there is a connection with a partially transmitted packet, it has to
+     * be serviced first.  The controller is waiting for the remainder so it
+     * can reassemble it.
+     */
+    for (conn = ble_hs_conn_first();
+         conn != NULL;
+         conn = SLIST_NEXT(conn, bhc_next)) {
+
+        if (conn->bhc_flags && BLE_HS_CONN_F_TX_FRAG) {
+            rc = ble_hs_wakeup_tx_conn(conn);
+            if (rc != 0) {
+                goto done;
+            }
+            break;
+        }
+    }
+
+    /* For each connection, transmit queued packets until there are no more
+     * packets to send or the controller's buffers are exhausted.
+     */
+    for (conn = ble_hs_conn_first();
+         conn != NULL;
+         conn = SLIST_NEXT(conn, bhc_next)) {
+
+        rc = ble_hs_wakeup_tx_conn(conn);
+        if (rc != 0) {
+            goto done;
+        }
+    }
+
+done:
+    ble_hs_unlock();
+}
+
 static void
-ble_hs_clear_data_queue(struct os_mqueue *mqueue)
+ble_hs_clear_rx_queue(void)
 {
     struct os_mbuf *om;
 
-    while ((om = os_mqueue_get(mqueue)) != NULL) {
+    while ((om = os_mqueue_get(&ble_hs_rx_q)) != NULL) {
         os_mbuf_free_chain(om);
     }
 }
@@ -275,13 +332,13 @@ ble_hs_reset(void)
 
     ble_hs_sync_state = 0;
 
-    rc = ble_hci_trans_reset();
-    if (rc != 0) {
-        return rc;
-    }
+    /* Reset transport.  Assume success; there is nothing we can do in case of
+     * failure.  If the transport failed to reset, the host will reset itself
+     * again when it fails to sync with the controller.
+     */
+    (void)ble_hci_trans_reset();
 
-    ble_hs_clear_data_queue(&ble_hs_tx_q);
-    ble_hs_clear_data_queue(&ble_hs_rx_q);
+    ble_hs_clear_rx_queue();
 
     while (1) {
         conn_handle = ble_hs_atomic_first_conn_handle();
@@ -394,9 +451,8 @@ ble_hs_event_tx_notify(struct os_event *ev)
 }
 
 static void
-ble_hs_event_data(struct os_event *ev)
+ble_hs_event_rx_data(struct os_event *ev)
 {
-    ble_hs_process_tx_data_queue();
     ble_hs_process_rx_data_queue();
 }
 
@@ -427,7 +483,7 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
         ev->ev_queued = 0;
         ev->ev_cb = ble_hs_event_rx_hci_ev;
         ev->ev_arg = hci_evt;
-        os_eventq_put(ble_hs_evq_get(), ev);
+        os_eventq_put(ble_hs_evq, ev);
     }
 }
 
@@ -445,7 +501,7 @@ ble_hs_notifications_sched(void)
     }
 #endif
 
-    os_eventq_put(ble_hs_evq_get(), &ble_hs_ev_tx_notifications);
+    os_eventq_put(ble_hs_evq, &ble_hs_ev_tx_notifications);
 }
 
 /**
@@ -461,7 +517,7 @@ ble_hs_sched_reset(int reason)
     BLE_HS_DBG_ASSERT(ble_hs_reset_reason == 0);
 
     ble_hs_reset_reason = reason;
-    os_eventq_put(ble_hs_evq_get(), &ble_hs_ev_reset);
+    os_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
 }
 
 void
@@ -490,13 +546,8 @@ ble_hs_start(void)
 
     ble_hs_parent_task = os_sched_get_current_task();
 
-    os_callout_init(&ble_hs_timer_timer, ble_hs_evq_get(),
+    os_callout_init(&ble_hs_timer_timer, ble_hs_evq,
                     ble_hs_timer_exp, NULL);
-
-    rc = ble_att_svr_start();
-    if (rc != 0) {
-        return rc;
-    }
 
     rc = ble_gatts_start();
     if (rc != 0) {
@@ -504,6 +555,9 @@ ble_hs_start(void)
     }
 
     ble_hs_sync();
+
+    rc = ble_hs_misc_restore_irks();
+    assert(rc == 0);
 
     return 0;
 }
@@ -522,7 +576,7 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 {
     int rc;
 
-    rc = os_mqueue_put(&ble_hs_rx_q, ble_hs_evq_get(), om);
+    rc = os_mqueue_put(&ble_hs_rx_q, ble_hs_evq, om);
     if (rc != 0) {
         os_mbuf_free_chain(om);
         return BLE_HS_EOS;
@@ -543,14 +597,11 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 int
 ble_hs_tx_data(struct os_mbuf *om)
 {
-    int rc;
+#if BLE_MONITOR
+    ble_monitor_send_om(BLE_MONITOR_OPCODE_ACL_TX_PKT, om);
+#endif
 
-    rc = os_mqueue_put(&ble_hs_tx_q, ble_hs_evq_get(), om);
-    if (rc != 0) {
-        os_mbuf_free_chain(om);
-        return BLE_HS_EOS;
-    }
-
+    ble_hci_trans_hs_acl_tx(om);
     return 0;
 }
 
@@ -618,8 +669,7 @@ ble_hs_init(void)
     rc = ble_gatts_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    os_mqueue_init(&ble_hs_rx_q, ble_hs_event_data, NULL);
-    os_mqueue_init(&ble_hs_tx_q, ble_hs_event_data, NULL);
+    os_mqueue_init(&ble_hs_rx_q, ble_hs_event_rx_data, NULL);
 
     rc = stats_init_and_reg(
         STATS_HDR(ble_hs_stats), STATS_SIZE_INIT_PARMS(ble_hs_stats,
@@ -637,6 +687,12 @@ ble_hs_init(void)
     ble_hci_trans_cfg_hs(ble_hs_hci_rx_evt, NULL, ble_hs_rx_data, NULL);
 
     ble_hs_evq_set(os_eventq_dflt_get());
+
+    /* Enqueue the start event to the default event queue.  Using the default
+     * queue ensures the event won't run until the end of main().  This allows
+     * the application to configure this package in the meantime.
+     */
+    os_eventq_put(os_eventq_dflt_get(), &ble_hs_ev_start);
 
 #if BLE_MONITOR
     ble_monitor_new_index(0, (uint8_t[6]){ }, "nimble0");

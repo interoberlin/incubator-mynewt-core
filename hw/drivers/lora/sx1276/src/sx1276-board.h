@@ -20,7 +20,7 @@ Maintainer: Miguel Luis and Gregory Cristian
 #define RADIO_SPI_IDX               MYNEWT_VAL(SX1276_SPI_IDX)
 
 #if RADIO_SPI_IDX == 0
-#define RADIO_NSS                   MYNEWT_VAL(SPI_0_MASTER_SS_PIN)
+#define RADIO_NSS                   MYNEWT_VAL(SX1276_SPI_CS_PIN)
 #else
 #error Invalid SX1276_SPI_IDX value
 #endif
@@ -60,7 +60,7 @@ void SX1276IoInit( void );
 void SX1276IoIrqInit( DioIrqHandler **irqHandlers );
 
 /*!
- * \brief De-initializes the radio I/Os pins interface. 
+ * \brief De-initializes the radio I/Os pins interface.
  *
  * \remark Useful when going in MCU low power modes
  */
@@ -94,7 +94,7 @@ void SX1276SetAntSwLowPower( bool status );
 void SX1276AntSwInit( void );
 
 /*!
- * \brief De-initializes the RF Switch I/Os pins interface 
+ * \brief De-initializes the RF Switch I/Os pins interface
  *
  * \remark Needed to decrease the power consumption in MCU low power modes
  */
@@ -116,6 +116,8 @@ void SX1276SetAntSw( uint8_t opMode );
  * \retval isSupported [true: supported, false: unsupported]
  */
 bool SX1276CheckRfFrequency( uint32_t frequency );
+
+void SX1276SetPublicNetwork(bool enable);
 
 void hal_pin_rxtx (int val);
 

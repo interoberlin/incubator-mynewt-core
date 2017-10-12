@@ -21,12 +21,14 @@
 #include <stddef.h>
 #include <string.h>
 #include <assert.h>
+#include <sysinit/sysinit.h>
 #include <nrf52.h>
 #include "os/os_cputime.h"
 #include "syscfg/syscfg.h"
 #include "sysflash/sysflash.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
+#include "hal/hal_system.h"
 #include "hal/hal_flash.h"
 #include "hal/hal_spi.h"
 #include "hal/hal_watchdog.h"
@@ -97,7 +99,9 @@ static const struct sensor_itf spi_0_itf_bme = {
 static const struct sensor_itf spi_0_itf_lis = {
     .si_type = SENSOR_ITF_SPI,
     .si_num = 0,
-    .si_cs_pin = 8
+    .si_cs_pin = 8,
+    .si_low_pin = 2,
+    .si_high_pin = 6
 };
 #endif
 #endif
@@ -274,6 +278,10 @@ hal_bsp_init(void)
     int rc;
 
     (void)rc;
+
+    /* Make sure system clocks have started */
+    hal_system_clock_start();
+
 #if MYNEWT_VAL(TIMER_0)
     rc = hal_timer_init(0, NULL);
     assert(rc == 0);

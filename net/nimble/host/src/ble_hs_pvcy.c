@@ -19,13 +19,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
+#include "stats/stats.h"
 #include "ble_hs_priv.h"
 
 static uint8_t ble_hs_pvcy_started;
-uint8_t ble_hs_pvcy_irk[16];
+static uint8_t ble_hs_pvcy_irk[16];
 
 /** Use this as a default IRK if none gets set. */
-const uint8_t default_irk[16] = {
+const uint8_t ble_hs_pvcy_default_irk[16] = {
     0xef, 0x8d, 0xe2, 0x16, 0x4f, 0xec, 0x43, 0x0d,
     0xbf, 0x5b, 0xdd, 0x34, 0xc0, 0x53, 0x1e, 0xb8,
 };
@@ -33,23 +34,24 @@ const uint8_t default_irk[16] = {
 static int
 ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
 {
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN + BLE_HCI_SET_RESOLV_PRIV_ADDR_TO_LEN];
+    uint8_t buf[BLE_HCI_SET_RESOLV_PRIV_ADDR_TO_LEN];
     int rc;
 
-    rc = ble_hs_hci_cmd_build_set_resolv_priv_addr_timeout(
-            timeout, buf, sizeof(buf));
-
+    rc = ble_hs_hci_cmd_build_set_resolv_priv_addr_timeout(timeout, buf,
+                                                           sizeof(buf));
     if (rc != 0) {
         return rc;
     }
 
-    return ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_SET_RPA_TMO),
+                             buf, sizeof(buf), NULL, 0, NULL);
 }
 
 static int
 ble_hs_pvcy_set_resolve_enabled(int enable)
 {
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN + BLE_HCI_SET_ADDR_RESOL_ENA_LEN];
+    uint8_t buf[BLE_HCI_SET_ADDR_RESOL_ENA_LEN];
     int rc;
 
     rc = ble_hs_hci_cmd_build_set_addr_res_en(enable, buf, sizeof(buf));
@@ -57,7 +59,9 @@ ble_hs_pvcy_set_resolve_enabled(int enable)
         return rc;
     }
 
-    rc = ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_SET_ADDR_RES_EN),
+                           buf, sizeof(buf), NULL, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -68,16 +72,18 @@ ble_hs_pvcy_set_resolve_enabled(int enable)
 int
 ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
 {
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN + BLE_HCI_RMV_FROM_RESOLV_LIST_LEN];
+    uint8_t buf[BLE_HCI_RMV_FROM_RESOLV_LIST_LEN];
     int rc;
 
-    rc = ble_hs_hci_cmd_build_remove_from_resolv_list(
-        addr_type, addr, buf, sizeof(buf));
+    rc = ble_hs_hci_cmd_build_remove_from_resolv_list(addr_type, addr,
+                                                      buf, sizeof(buf));
     if (rc != 0) {
         return rc;
     }
 
-    rc = ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
+                           buf, sizeof(buf), NULL, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -88,15 +94,11 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
 static int
 ble_hs_pvcy_clear_entries(void)
 {
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN ];
     int rc;
 
-    rc = ble_hs_hci_cmd_build_clear_resolv_list(buf, sizeof(buf));
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_CLR_RESOLV_LIST),
+                           NULL, 0, NULL, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -109,8 +111,10 @@ ble_hs_pvcy_add_entry(const uint8_t *addr, uint8_t addr_type,
                       const uint8_t *irk)
 {
     struct hci_add_dev_to_resolving_list add;
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN + BLE_HCI_ADD_TO_RESOLV_LIST_LEN];
+    uint8_t buf[BLE_HCI_ADD_TO_RESOLV_LIST_LEN];
     int rc;
+
+    STATS_INC(ble_hs_stats, pvcy_add_entry);
 
     add.addr_type = addr_type;
     memcpy(add.addr, addr, 6);
@@ -119,15 +123,21 @@ ble_hs_pvcy_add_entry(const uint8_t *addr, uint8_t addr_type,
 
     rc = ble_hs_hci_cmd_build_add_to_resolv_list(&add, buf, sizeof(buf));
     if (rc != 0) {
-        return rc;
+        goto err;
     }
 
-    rc = ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_ADD_RESOLV_LIST),
+                           buf, sizeof(buf), NULL, 0, NULL);
     if (rc != 0) {
-        return rc;
+        goto err;
     }
 
     return 0;
+
+err:
+    STATS_INC(ble_hs_stats, pvcy_add_entry_fail);
+    return rc;
 }
 
 int
@@ -162,7 +172,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
     if (irk != NULL) {
         memcpy(new_irk, irk, 16);
     } else {
-        memcpy(new_irk, default_irk, 16);
+        memcpy(new_irk, ble_hs_pvcy_default_irk, 16);
     }
 
     /* Clear the resolving list if this is a new IRK. */
@@ -210,7 +220,7 @@ ble_hs_pvcy_our_irk(const uint8_t **out_irk)
 int
 ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
 {
-    uint8_t buf[BLE_HCI_CMD_HDR_LEN + BLE_HCI_LE_SET_PRIVACY_MODE_LEN];
+    uint8_t buf[BLE_HCI_LE_SET_PRIVACY_MODE_LEN];
     int rc;
 
     rc = ble_hs_hci_cmd_build_le_set_priv_mode(addr->val, addr->type, priv_mode,
@@ -219,5 +229,7 @@ ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
         return rc;
     }
 
-    return ble_hs_hci_cmd_tx(buf, NULL, 0, NULL);
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_SET_PRIVACY_MODE),
+                             buf, sizeof(buf), NULL, 0, NULL);
 }

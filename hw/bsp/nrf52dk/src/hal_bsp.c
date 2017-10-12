@@ -26,6 +26,7 @@
 #include "sysflash/sysflash.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
+#include "hal/hal_system.h"
 #include "hal/hal_flash.h"
 #include "hal/hal_spi.h"
 #include "hal/hal_watchdog.h"
@@ -42,6 +43,12 @@
 #endif
 #include "os/os_dev.h"
 #include "bsp.h"
+#if MYNEWT_VAL(PWM)
+#include <pwm_nrf52/pwm_nrf52.h>
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+#include <soft_pwm/soft_pwm.h>
+#endif
 
 #if MYNEWT_VAL(UART_0)
 static struct uart_dev os_bsp_uart0;
@@ -82,6 +89,20 @@ static const struct nrf52_hal_spi_cfg os_bsp_spi0s_cfg = {
     .ss_pin       = 22,
 };
 #endif
+
+#if MYNEWT_VAL(PWM_0)
+static struct pwm_dev os_bsp_pwm0;
+#endif
+#if MYNEWT_VAL(PWM_1)
+static struct pwm_dev os_bsp_pwm1;
+#endif
+#if MYNEWT_VAL(PWM_2)
+static struct pwm_dev os_bsp_pwm2;
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+static struct pwm_dev os_bsp_spwm;
+#endif
+
 
 #if MYNEWT_VAL(I2C_0)
 static const struct nrf52_hal_i2c_cfg hal_i2c_cfg = {
@@ -157,6 +178,10 @@ hal_bsp_init(void)
     int rc;
 
     (void)rc;
+
+    /* Make sure system clocks have started */
+    hal_system_clock_start();
+
 #if MYNEWT_VAL(TIMER_0)
     rc = hal_timer_init(0, NULL);
     assert(rc == 0);
@@ -181,6 +206,44 @@ hal_bsp_init(void)
     rc = hal_timer_init(5, NULL);
     assert(rc == 0);
 #endif
+
+#if MYNEWT_VAL(PWM_0)
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm0,
+                       "pwm0",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       NULL);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(PWM_1)
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm1,
+                       "pwm1",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       NULL);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(PWM_2)
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm2,
+                       "pwm2",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       NULL);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+    rc = os_dev_create((struct os_dev *) &os_bsp_spwm,
+                       "spwm",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       soft_pwm_dev_init,
+                       NULL);
+    assert(rc == 0);
+#endif
+
 
 #if (MYNEWT_VAL(OS_CPUTIME_TIMER_NUM) >= 0)
     rc = os_cputime_init(MYNEWT_VAL(OS_CPUTIME_FREQ));

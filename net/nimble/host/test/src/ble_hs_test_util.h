@@ -32,7 +32,6 @@ struct ble_l2cap_chan;
 struct hci_disconn_complete;
 struct hci_create_conn;
 
-extern struct os_eventq ble_hs_test_util_evq;
 extern const struct ble_gap_adv_params ble_hs_test_util_adv_params;
 
 struct ble_hs_test_util_num_completed_pkts_entry {
@@ -64,6 +63,14 @@ struct ble_hs_test_util_att_group_type_entry {
     const ble_uuid_t *uuid;
 };
 
+#define BLE_HS_TEST_UTIL_PHONY_ACK_MAX  64
+struct ble_hs_test_util_phony_ack {
+    uint16_t opcode;
+    uint8_t status;
+    uint8_t evt_params[256];
+    uint8_t evt_params_len;
+};
+
 #define BLE_HS_TEST_UTIL_L2CAP_HCI_HDR(handle, pb, len) \
     ((struct hci_data_hdr) {                            \
         .hdh_handle_pb_bc = ((handle)  << 0) |          \
@@ -83,6 +90,11 @@ void ble_hs_test_util_prev_tx_queue_clear(void);
 void ble_hs_test_util_set_ack_params(uint16_t opcode, uint8_t status,
                                      void *params, uint8_t params_len);
 void ble_hs_test_util_set_ack(uint16_t opcode, uint8_t status);
+void ble_hs_test_util_append_ack_params(uint16_t opcode, uint8_t status,
+                                        void *params, uint8_t params_len);
+void ble_hs_test_util_append_ack(uint16_t opcode, uint8_t status);
+void ble_hs_test_util_set_ack_seq(struct ble_hs_test_util_phony_ack *acks);
+void ble_hs_test_util_prev_tx_queue_adj(int count);
 void *ble_hs_test_util_get_first_hci_tx(void);
 void *ble_hs_test_util_get_last_hci_tx(void);
 void ble_hs_test_util_enqueue_hci_tx(void *cmd);
@@ -126,6 +138,13 @@ int ble_hs_test_util_disc(uint8_t own_addr_type, int32_t duration_ms,
                           ble_gap_event_fn *cb, void *cb_arg, int fail_idx,
                           uint8_t fail_status);
 int ble_hs_test_util_disc_cancel(uint8_t ack_status);
+void ble_hs_test_util_verify_tx_add_irk(uint8_t addr_type,
+                                        const uint8_t *addr,
+                                        const uint8_t *peer_irk,
+                                        const uint8_t *local_irk);
+void ble_hs_test_util_verify_tx_set_priv_mode(uint8_t addr_type,
+                                              const uint8_t *addr,
+                                              uint8_t priv_mode);
 void ble_hs_test_util_verify_tx_disconnect(uint16_t handle, uint8_t reason);
 void ble_hs_test_util_verify_tx_create_conn(const struct hci_create_conn *exp);
 int ble_hs_test_util_adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
@@ -233,7 +252,6 @@ void ble_hs_test_util_rx_disconn_complete_event(
     struct hci_disconn_complete *evt);
 uint8_t *ble_hs_test_util_verify_tx_hci(uint8_t ogf, uint16_t ocf,
                                         uint8_t *out_param_len);
-void ble_hs_test_util_tx_all(void);
 void ble_hs_test_util_verify_tx_prep_write(uint16_t attr_handle,
                                            uint16_t offset,
                                            const void *data, int data_len);
@@ -255,13 +273,16 @@ void ble_hs_test_util_verify_tx_read_group_type_rsp(
     struct ble_hs_test_util_att_group_type_entry *entries);
 void ble_hs_test_util_verify_tx_err_rsp(uint8_t req_op, uint16_t handle,
                                         uint8_t error_code);
+void ble_hs_test_util_verify_tx_write_cmd(uint16_t handle, const void *data,
+                                          uint16_t data_len);
+
 uint8_t ble_hs_test_util_verify_tx_l2cap_update_req(
     struct ble_l2cap_sig_update_params *params);
 int ble_hs_test_util_rx_l2cap_update_rsp(uint16_t conn_handle,
                                          uint8_t id, uint16_t result);
 void ble_hs_test_util_verify_tx_l2cap_update_rsp(uint8_t exp_id,
                                                  uint16_t exp_result);
-void ble_hs_test_util_set_static_rnd_addr(void);
+void ble_hs_test_util_set_static_rnd_addr(const uint8_t *addr);
 struct os_mbuf *ble_hs_test_util_om_from_flat(const void *buf, uint16_t len);
 int ble_hs_test_util_flat_attr_cmp(const struct ble_hs_test_util_flat_attr *a,
                                    const struct ble_hs_test_util_flat_attr *b);
@@ -294,6 +315,9 @@ void ble_hs_test_util_post_test(void *arg);
 int ble_hs_test_util_num_cccds(void);
 int ble_hs_test_util_num_our_secs(void);
 int ble_hs_test_util_num_peer_secs(void);
+void ble_hs_test_util_reg_svcs(const struct ble_gatt_svc_def *svcs,
+                               ble_gatt_register_fn *reg_cb,
+                               void *cb_arg);
 void ble_hs_test_util_init_no_start(void);
 void ble_hs_test_util_init(void);
 

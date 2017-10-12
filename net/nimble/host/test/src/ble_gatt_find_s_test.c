@@ -172,8 +172,6 @@ ble_gatt_find_s_test_misc_verify_tx_read_type(uint16_t start_handle,
     struct os_mbuf *om;
     uint16_t uuid16;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
     TEST_ASSERT_FATAL(om != NULL);
 
@@ -191,8 +189,6 @@ ble_gatt_find_s_test_misc_verify_tx_read(uint16_t handle)
 {
     struct ble_att_read_req req;
     struct os_mbuf *om;
-
-    ble_hs_test_util_tx_all();
 
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
     TEST_ASSERT_FATAL(om != NULL);
@@ -387,7 +383,6 @@ TEST_CASE(ble_gatt_find_s_test_oom)
      * due to mbuf exhaustion.
      */
     ble_hs_test_util_prev_tx_queue_clear();
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue_pullup() == NULL);
 
     /* Verify that we will resume the stalled GATT procedure in one second. */
@@ -395,11 +390,10 @@ TEST_CASE(ble_gatt_find_s_test_oom)
     TEST_ASSERT(ticks_until == BLE_GATT_RESUME_RATE_TICKS);
 
     /* Verify the procedure succeeds after mbufs become available. */
-    os_mbuf_free_chain(oms);
+    rc = os_mbuf_free_chain(oms);
+    TEST_ASSERT_FATAL(rc == 0);
     os_time_advance(ticks_until);
     ble_gattc_timer();
-
-    ble_hs_test_util_tx_all();
 
     /* We can't cause a memory exhaustion error on the follow up request.  The
      * GATT client frees the read response immediately before sending the
@@ -407,19 +401,18 @@ TEST_CASE(ble_gatt_find_s_test_oom)
      */
     /* XXX: Find a way to test this. */
     ble_gatt_find_s_test_misc_rx_read(1, incs[0].uuid);
-    ble_hs_test_util_tx_all();
 
     /* Exhaust the msys pool.  Leave one mbuf for the forthcoming response. */
     oms = ble_hs_test_util_mbuf_alloc_all_but(1);
     ble_gatt_find_s_test_misc_rx_read_type(1, incs + 1);
 
     /* Verify the procedure succeeds after mbufs become available. */
-    os_mbuf_free_chain(oms);
+    rc = os_mbuf_free_chain(oms);
+    TEST_ASSERT_FATAL(rc == 0);
     os_time_advance(ticks_until);
     ble_gattc_timer();
 
     ble_gatt_find_s_test_misc_rx_read(1, incs[1].uuid);
-    ble_hs_test_util_tx_all();
 
     ble_hs_test_util_rx_att_err_rsp(1,
                                     BLE_ATT_OP_READ_TYPE_REQ,

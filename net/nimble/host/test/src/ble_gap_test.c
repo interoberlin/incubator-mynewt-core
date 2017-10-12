@@ -58,7 +58,7 @@ static void
 ble_gap_test_util_init(void)
 {
     ble_hs_test_util_init();
-    ble_hs_test_util_set_static_rnd_addr();
+    ble_hs_test_util_set_static_rnd_addr((uint8_t[6]){ 1, 2, 3, 4, 5, 0xc0 });
     ble_gap_test_util_reset_cb_info();
 }
 
@@ -79,6 +79,7 @@ static int
 ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
 {
     int *fail_reason;
+    int ret;
 
     ble_gap_test_event = *event;
     ble_gap_test_conn_arg = arg;
@@ -86,7 +87,9 @@ ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
         ble_gap_test_conn_status = event->connect.status;
-        ble_gap_conn_find(event->connect.conn_handle, &ble_gap_test_conn_desc);
+        ret = ble_gap_conn_find(event->connect.conn_handle,
+                                &ble_gap_test_conn_desc);
+        TEST_ASSERT_FATAL(ble_gap_test_conn_status || ret == 0);
         break;
 
     case BLE_GAP_EVENT_DISCONNECT:
@@ -96,8 +99,9 @@ ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_CONN_UPDATE:
         ble_gap_test_conn_status = event->conn_update.status;
-        ble_gap_conn_find(event->conn_update.conn_handle,
-                          &ble_gap_test_conn_desc);
+        ret = ble_gap_conn_find(event->conn_update.conn_handle,
+                               &ble_gap_test_conn_desc);
+        TEST_ASSERT_FATAL(ret == 0);
         break;
 
     case BLE_GAP_EVENT_CONN_CANCEL:
@@ -105,8 +109,9 @@ ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
 
     case BLE_GAP_EVENT_TERM_FAILURE:
         ble_gap_test_conn_status = event->term_failure.status;
-        ble_gap_conn_find(event->term_failure.conn_handle,
-                          &ble_gap_test_conn_desc);
+        ret = ble_gap_conn_find(event->term_failure.conn_handle,
+                                &ble_gap_test_conn_desc);
+        TEST_ASSERT_FATAL(ret == 0);
         break;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
@@ -116,8 +121,9 @@ ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONN_UPDATE_REQ:
         ble_gap_test_conn_peer_params = *event->conn_update_req.peer_params;
         *event->conn_update_req.self_params = ble_gap_test_conn_self_params;
-        ble_gap_conn_find(event->conn_update_req.conn_handle,
-                          &ble_gap_test_conn_desc);
+        ret = ble_gap_conn_find(event->conn_update_req.conn_handle,
+                                &ble_gap_test_conn_desc);
+        TEST_ASSERT_FATAL(ret == 0);
 
         fail_reason = arg;
         if (fail_reason == NULL) {
@@ -134,6 +140,15 @@ ble_gap_test_util_connect_cb(struct ble_gap_event *event, void *arg)
         TEST_ASSERT_FATAL(0);
         break;
     }
+
+    return 0;
+}
+
+static int
+ble_gap_test_util_copy_cb(struct ble_gap_event *event, void *arg)
+{
+    ble_gap_test_event = *event;
+    ble_gap_test_conn_arg = arg;
 
     return 0;
 }
@@ -958,6 +973,34 @@ TEST_CASE(ble_gap_test_case_conn_gen_busy)
     TEST_ASSERT(rc == BLE_HS_EBUSY);
 }
 
+TEST_CASE(ble_gap_test_case_conn_gen_fail_evt)
+{
+    static const ble_addr_t peer_addr = {BLE_ADDR_PUBLIC, {1, 2, 3, 4, 5, 6}};
+    struct hci_le_conn_complete evt;
+    int rc;
+
+    ble_gap_test_util_init();
+
+    /* Start a connect procedure. */
+    rc = ble_hs_test_util_connect(BLE_OWN_ADDR_PUBLIC, &peer_addr, 0, NULL,
+                                  ble_gap_test_util_copy_cb, NULL, 0);
+    TEST_ASSERT_FATAL(rc == 0);
+
+    /* Controller indicates failure via connect complete event. */
+    memset(&evt, 0, sizeof evt);
+    evt.subevent_code = BLE_HCI_LE_SUBEV_CONN_COMPLETE;
+    evt.status = BLE_ERR_CONN_ACCEPT_TMO;
+    evt.role = BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER;
+
+    rc = ble_gap_rx_conn_complete(&evt);
+    TEST_ASSERT_FATAL(rc == 0);
+
+    /* Ensure failed connect was reported to application. */
+    TEST_ASSERT(ble_gap_test_event.type == BLE_GAP_EVENT_CONNECT);
+    TEST_ASSERT(ble_gap_test_event.connect.status ==
+                BLE_HS_HCI_ERR(BLE_ERR_CONN_ACCEPT_TMO));
+}
+
 TEST_SUITE(ble_gap_test_suite_conn_gen)
 {
     tu_suite_set_post_test_cb(ble_hs_test_util_post_test, NULL);
@@ -968,6 +1011,7 @@ TEST_SUITE(ble_gap_test_suite_conn_gen)
     ble_gap_test_case_conn_gen_already();
     ble_gap_test_case_conn_gen_done();
     ble_gap_test_case_conn_gen_busy();
+    ble_gap_test_case_conn_gen_fail_evt();
 }
 
 /*****************************************************************************
@@ -1247,7 +1291,6 @@ TEST_CASE(ble_gap_test_case_conn_find)
                                      BLE_HS_TEST_CONN_FEAT_ALL,
                                      ble_gap_test_util_connect_cb,
                                      NULL);
-
 
     rc = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, pub_addr, NULL);
     TEST_ASSERT_FATAL(rc == 0);
@@ -2991,7 +3034,6 @@ TEST_CASE(ble_gap_test_case_set_cb_good)
 
     ble_hs_test_util_create_conn(2, peer_addr, ble_gap_test_util_connect_cb,
                                  NULL);
-
 
     /* Reconfigure the callback. */
     rc = ble_gap_set_event_cb(2, ble_gap_test_util_set_cb_event, &event);

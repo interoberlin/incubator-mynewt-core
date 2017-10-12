@@ -21,9 +21,21 @@
 # SOFTWARE.
 
 syscfg.defs:
-    LSM303DLHC_LOG:
-        description: 'Enable LSM303DLHC logging'
+    BMP280_SHELL_ITF_NUM:
+        description: 'Shell interface number for the BMP280'
         value: 0
-    LSM303DLHC_STATS:
-        description: 'Enable LSM303DLHC statistics'
+    BMP280_SHELL_ITF_TYPE:
+        description: 'Shell interface type for the BMP280'
+        value: 1
+    BMP280_SHELL_CSPIN:
+        description: 'CS pin for BMP280'
+        value : -1
+    BMP280_SHELL_ITF_ADDR:
+        description: 'Slave address for BMP280'
+        value : 0x77
+    BMP280_CLI:
+        description: 'Enable shell support for the BMP280'
         value: 0
+    BMP280_SPEC_CALC:
+        description: 'BMP280 Spec calculation instead of built in one'
+        value : 1

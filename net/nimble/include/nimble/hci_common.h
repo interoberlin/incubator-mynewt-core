@@ -39,6 +39,9 @@ extern "C" {
 
 #define BLE_HCI_OPCODE_NOP                  (0)
 
+/* Set opcode based on OCF and OGF */
+#define BLE_HCI_OP(ogf, ocf)            ((ocf) | ((ogf) << 10))
+
 /* Get the OGF and OCF from the opcode in the command */
 #define BLE_HCI_OGF(opcode)                 (((opcode) >> 10) & 0x003F)
 #define BLE_HCI_OCF(opcode)                 ((opcode) & 0x03FF)
@@ -75,6 +78,7 @@ extern "C" {
 #define BLE_HCI_OCF_IP_RD_LOCAL_VER         (0x0001)
 #define BLE_HCI_OCF_IP_RD_LOC_SUPP_CMD      (0x0002)
 #define BLE_HCI_OCF_IP_RD_LOC_SUPP_FEAT     (0x0003)
+#define BLE_HCI_OCF_IP_RD_BUF_SIZE          (0x0005)
 #define BLE_HCI_OCF_IP_RD_BD_ADDR           (0x0009)
 
 /* List of OCF for Status parameters commands (OGF = 0x05) */
@@ -171,6 +175,10 @@ extern "C" {
 
 /* --- Read BD_ADDR (OGF 0x04, OCF 0x0009 --- */
 #define BLE_HCI_IP_RD_BD_ADDR_ACK_PARAM_LEN (6)
+
+/* --- Read buffer size (OGF 0x04, OCF 0x0005) --- */
+#define BLE_HCI_IP_RD_BUF_SIZE_LEN          (0)
+#define BLE_HCI_IP_RD_BUF_SIZE_RSPLEN       (7) /* No status byte. */
 
 /* --- Read/Write authenticated payload timeout (ocf 0x007B/0x007C) */
 #define BLE_HCI_RD_AUTH_PYLD_TMO_LEN        (4)

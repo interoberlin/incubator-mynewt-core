@@ -44,6 +44,8 @@ static uint16_t ble_att_svr_test_attr_n_len;
 static int
 ble_att_svr_test_misc_gap_cb(struct ble_gap_event *event, void *arg)
 {
+    int rc;
+
     switch (event->type) {
     case BLE_GAP_EVENT_NOTIFY_RX:
         ble_att_svr_test_n_conn_handle = event->notify_rx.conn_handle;
@@ -51,8 +53,10 @@ ble_att_svr_test_misc_gap_cb(struct ble_gap_event *event, void *arg)
         TEST_ASSERT_FATAL(OS_MBUF_PKTLEN(event->notify_rx.om) <=
                           sizeof ble_att_svr_test_attr_n);
         ble_att_svr_test_attr_n_len = OS_MBUF_PKTLEN(event->notify_rx.om);
-        os_mbuf_copydata(event->notify_rx.om, 0, ble_att_svr_test_attr_n_len,
-                         ble_att_svr_test_attr_n);
+        rc = os_mbuf_copydata(event->notify_rx.om, 0,
+                              ble_att_svr_test_attr_n_len,
+                              ble_att_svr_test_attr_n);
+        TEST_ASSERT_FATAL(rc == 0);
         break;
 
     default:
@@ -102,14 +106,17 @@ ble_att_svr_test_misc_attr_fn_r_1(uint16_t conn_handle, uint16_t attr_handle,
                                   uint8_t op, uint16_t offset,
                                   struct os_mbuf **om, void *arg)
 {
+    int rc;
+
     switch (op) {
     case BLE_ATT_ACCESS_OP_READ:
         if (offset > ble_att_svr_test_attr_r_1_len) {
             return BLE_ATT_ERR_INVALID_OFFSET;
         }
 
-        os_mbuf_append(*om, ble_att_svr_test_attr_r_1 + offset,
-                       ble_att_svr_test_attr_r_1_len - offset);
+        rc = os_mbuf_append(*om, ble_att_svr_test_attr_r_1 + offset,
+                            ble_att_svr_test_attr_r_1_len - offset);
+        TEST_ASSERT_FATAL(rc == 0);
         return 0;
 
     default:
@@ -122,6 +129,7 @@ ble_att_svr_test_misc_attr_fn_r_2(uint16_t conn_handle, uint16_t attr_handle,
                                   uint8_t op, uint16_t offset,
                                   struct os_mbuf **om, void *arg)
 {
+    int rc;
 
     switch (op) {
     case BLE_ATT_ACCESS_OP_READ:
@@ -129,8 +137,9 @@ ble_att_svr_test_misc_attr_fn_r_2(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_ATT_ERR_INVALID_OFFSET;
         }
 
-        os_mbuf_append(*om, ble_att_svr_test_attr_r_2 + offset,
-                       ble_att_svr_test_attr_r_2_len - offset);
+        rc = os_mbuf_append(*om, ble_att_svr_test_attr_r_2 + offset,
+                            ble_att_svr_test_attr_r_2_len - offset);
+        TEST_ASSERT_FATAL(rc == 0);
         return 0;
 
     default:
@@ -143,7 +152,11 @@ ble_att_svr_test_misc_attr_fn_r_err(uint16_t conn_handle, uint16_t attr_handle,
                                     uint8_t op, uint16_t offset,
                                     struct os_mbuf **om, void *arg)
 {
-    os_mbuf_append(*om, (uint8_t[4]){1,2,3,4}, 4);
+    int rc;
+
+    rc = os_mbuf_append(*om, (uint8_t[4]){1,2,3,4}, 4);
+    TEST_ASSERT_FATAL(rc == 0);
+
     return BLE_ATT_ERR_UNLIKELY;
 }
 
@@ -286,19 +299,23 @@ ble_att_svr_test_misc_attr_fn_rw_1(uint16_t conn_handle, uint16_t attr_handle,
                                    uint8_t op, uint16_t offset,
                                    struct os_mbuf **om, void *arg)
 {
+    int rc;
+
     switch (op) {
     case BLE_ATT_ACCESS_OP_READ:
         if (offset > ble_att_svr_test_attr_w_1_len) {
             return BLE_ATT_ERR_INVALID_OFFSET;
         }
 
-        os_mbuf_append(*om, ble_att_svr_test_attr_w_1 + offset,
-                       ble_att_svr_test_attr_w_1_len - offset);
+        rc = os_mbuf_append(*om, ble_att_svr_test_attr_w_1 + offset,
+                            ble_att_svr_test_attr_w_1_len - offset);
+        TEST_ASSERT_FATAL(rc == 0);
         return 0;
 
     case BLE_ATT_ACCESS_OP_WRITE:
-        os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
-                         ble_att_svr_test_attr_w_1);
+        rc = os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
+                              ble_att_svr_test_attr_w_1);
+        TEST_ASSERT_FATAL(rc == 0);
         ble_att_svr_test_attr_w_1_len = OS_MBUF_PKTLEN(*om);
         return 0;
 
@@ -312,10 +329,13 @@ ble_att_svr_test_misc_attr_fn_w_1(uint16_t conn_handle, uint16_t attr_handle,
                                   uint8_t op, uint16_t offset,
                                   struct os_mbuf **om, void *arg)
 {
+    int rc;
+
     switch (op) {
     case BLE_ATT_ACCESS_OP_WRITE:
-        os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
-                         ble_att_svr_test_attr_w_1);
+        rc = os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
+                              ble_att_svr_test_attr_w_1);
+        TEST_ASSERT_FATAL(rc == 0);
         ble_att_svr_test_attr_w_1_len = OS_MBUF_PKTLEN(*om);
         return 0;
 
@@ -329,10 +349,13 @@ ble_att_svr_test_misc_attr_fn_w_2(uint16_t conn_handle, uint16_t attr_handle,
                                   uint8_t op, uint16_t offset,
                                   struct os_mbuf **om, void *arg)
 {
+    int rc;
+
     switch (op) {
     case BLE_ATT_ACCESS_OP_WRITE:
-        os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
-                         ble_att_svr_test_attr_w_2);
+        rc = os_mbuf_copydata(*om, 0, OS_MBUF_PKTLEN(*om),
+                              ble_att_svr_test_attr_w_2);
+        TEST_ASSERT_FATAL(rc == 0);
         ble_att_svr_test_attr_w_2_len = OS_MBUF_PKTLEN(*om);
         return 0;
 
@@ -393,8 +416,6 @@ ble_att_svr_test_misc_verify_tx_read_mult_rsp(
     int rc;
     int off;
     int i;
-
-    ble_hs_test_util_tx_all();
 
     om = ble_hs_test_util_prev_tx_dequeue();
 
@@ -478,8 +499,6 @@ ble_att_svr_test_misc_verify_tx_find_type_value_rsp(
     int off;
     int rc;
 
-    ble_hs_test_util_tx_all();
-
     off = 0;
 
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
@@ -529,9 +548,8 @@ ble_att_svr_test_misc_verify_tx_read_type_rsp(
     int off;
     int rc;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
+    TEST_ASSERT(om);
 
     ble_att_read_type_rsp_parse(om->om_data, om->om_len, &rsp);
 
@@ -566,8 +584,6 @@ ble_att_svr_test_misc_verify_tx_prep_write_rsp(uint16_t attr_handle,
     uint8_t buf[1024];
     int rc;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_hs_test_util_prev_tx_dequeue();
 
     rc = os_mbuf_copydata(om, 0, OS_MBUF_PKTLEN(om), buf);
@@ -589,9 +605,9 @@ ble_att_svr_test_misc_verify_tx_exec_write_rsp(void)
 {
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
+    TEST_ASSERT(om);
+
     ble_att_exec_write_rsp_parse(om->om_data, om->om_len);
 }
 
@@ -717,9 +733,8 @@ ble_att_svr_test_misc_verify_tx_indicate_rsp(void)
 {
     struct os_mbuf *om;
 
-    ble_hs_test_util_tx_all();
-
     om = ble_hs_test_util_prev_tx_dequeue_pullup();
+    TEST_ASSERT(om);
 
     ble_att_indicate_rsp_parse(om->om_data, om->om_len);
 }
@@ -761,7 +776,6 @@ ble_att_svr_test_misc_verify_indicate(uint16_t conn_handle,
         TEST_ASSERT(ble_att_svr_test_n_conn_handle == 0xffff);
         TEST_ASSERT(ble_att_svr_test_n_attr_handle == 0);
         TEST_ASSERT(ble_att_svr_test_attr_n_len == 0);
-        ble_hs_test_util_tx_all();
         TEST_ASSERT(ble_hs_test_util_prev_tx_queue_sz() == 0);
     }
 }
@@ -856,10 +870,10 @@ TEST_CASE(ble_att_svr_test_read)
     TEST_ASSERT(OS_MBUF_PKTLEN(om) == ble_att_svr_test_attr_r_1_len);
     TEST_ASSERT(os_mbuf_cmpf(om, 0, ble_att_svr_test_attr_r_1,
                                ble_att_svr_test_attr_r_1_len) == 0);
-    os_mbuf_free_chain(om);
+    rc = os_mbuf_free_chain(om);
+    TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure no response got sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /* Encrypt link; success. */
@@ -1040,7 +1054,6 @@ TEST_CASE(ble_att_svr_test_write)
     TEST_ASSERT(rc == 0);
 
     /* Ensure no response got sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /*** Successful write. */
@@ -1073,7 +1086,6 @@ TEST_CASE(ble_att_svr_test_write)
     TEST_ASSERT(rc == 0);
 
     /* Ensure no response got sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /* Encrypt link; success. */
@@ -1898,7 +1910,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we were able to send a real response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_find_info_rsp(
         (struct ble_hs_test_util_att_info_entry[]) {
             { .handle = 1, .uuid = BLE_UUID16_DECLARE(BLE_ATT_UUID_PRIMARY_SERVICE) },
@@ -1914,7 +1925,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOMEM);
 
     /* Ensure we were able to send an error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_FIND_TYPE_VALUE_REQ, 1,
                                        BLE_ATT_ERR_INSUFFICIENT_RES);
 
@@ -1927,7 +1937,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOENT);
 
     /* Ensure we were able to send a non-OOM error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_READ_TYPE_REQ, 100,
                                        BLE_ATT_ERR_ATTR_NOT_FOUND);
 
@@ -1939,7 +1948,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we were able to send a real response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_read_rsp(ble_att_svr_test_attr_w_1,
                                         ble_att_svr_test_attr_w_1_len);
 
@@ -1951,10 +1959,8 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we were able to send a real response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_read_blob_rsp(ble_att_svr_test_attr_w_1,
                                              ble_att_svr_test_attr_w_1_len);
-
 
     /*** Read multiple. */
     ble_hs_test_util_prev_tx_dequeue();
@@ -1966,10 +1972,8 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOMEM);
 
     /* Ensure we were able to send an error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_READ_MULT_REQ, 0,
                                        BLE_ATT_ERR_INSUFFICIENT_RES);
-
 
     /***
      * Read by group type; always respond affirmatively, even when no
@@ -1983,7 +1987,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOENT);
 
     /* Ensure we were able to send a non-OOM error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_READ_GROUP_TYPE_REQ, 11,
                                        BLE_ATT_ERR_ATTR_NOT_FOUND);
 
@@ -1996,7 +1999,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOMEM);
 
     /* Ensure we were able to send an error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_WRITE_REQ, 1,
                                        BLE_ATT_ERR_INSUFFICIENT_RES);
 
@@ -2009,7 +2011,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure no response sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /*** Prepare write. */
@@ -2021,7 +2022,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == BLE_HS_ENOMEM);
 
     /* Ensure we were able to send an error response. */
-    ble_hs_test_util_tx_all();
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_PREP_WRITE_REQ, 1,
                                        BLE_ATT_ERR_INSUFFICIENT_RES);
 
@@ -2034,7 +2034,6 @@ TEST_CASE(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure no response sent. */
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue() == NULL);
 
     /*** Indicate. */
@@ -2049,7 +2048,8 @@ TEST_CASE(ble_att_svr_test_oom)
     ble_hs_test_util_verify_tx_err_rsp(BLE_ATT_OP_INDICATE_REQ, 1,
                                        BLE_ATT_ERR_INSUFFICIENT_RES);
 
-    os_mbuf_free_chain(oms);
+    rc = os_mbuf_free_chain(oms);
+    TEST_ASSERT_FATAL(rc == 0);
 }
 
 TEST_SUITE(ble_att_svr_suite)

@@ -26,6 +26,7 @@
 #include "sysflash/sysflash.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
+#include "hal/hal_system.h"
 #include "hal/hal_flash.h"
 #include "hal/hal_spi.h"
 #include "hal/hal_watchdog.h"
@@ -77,7 +78,7 @@ static const struct nrf52_hal_spi_cfg os_bsp_spi0s_cfg = {
 #endif
 
 #if MYNEWT_VAL(I2C_0)
-static const struct nrf52_hal_i2c_cfg hal_i2c_cfg = {
+static const struct nrf52_hal_i2c_cfg hal_i2c0_cfg = {
     .scl_pin = 27,
     .sda_pin = 26,
     .i2c_frequency = 100    /* 100 kHz */
@@ -149,6 +150,9 @@ hal_bsp_init(void)
 {
     int rc;
 
+    /* Make sure system clocks have started */
+    hal_system_clock_start();
+
 #if MYNEWT_VAL(TIMER_0)
     rc = hal_timer_init(0, NULL);
     assert(rc == 0);
@@ -180,7 +184,7 @@ hal_bsp_init(void)
 #endif
 
 #if MYNEWT_VAL(I2C_0)
-    rc = hal_i2c_init(0, (void *)&hal_i2c_cfg);
+    rc = hal_i2c_init(0, (void *)&hal_i2c0_cfg);
     assert(rc == 0);
 #endif
 

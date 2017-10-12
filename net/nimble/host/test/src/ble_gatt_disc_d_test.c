@@ -59,7 +59,6 @@ ble_gatt_disc_d_test_misc_rx_rsp_once(
     int i;
 
     /* Send the pending ATT Read By Type Request. */
-    ble_hs_test_util_tx_all();
 
     if (dscs[0].dsc_uuid.u.type == BLE_UUID_TYPE_16) {
         rsp.bafp_format = BLE_ATT_FIND_INFO_RSP_FORMAT_16BIT;
@@ -131,7 +130,6 @@ ble_gatt_disc_d_test_misc_rx_rsp(uint16_t conn_handle,
 
     if (dscs[idx - 1].dsc_handle != end_handle) {
         /* Send the pending ATT Request. */
-        ble_hs_test_util_tx_all();
         ble_hs_test_util_rx_att_err_rsp(conn_handle, BLE_ATT_OP_FIND_INFO_REQ,
                                         BLE_ATT_ERR_ATTR_NOT_FOUND,
                                         end_handle);
@@ -145,7 +143,7 @@ ble_gatt_disc_d_test_misc_verify_dscs(struct ble_gatt_disc_d_test_dsc *dscs,
     int i;
 
     if (stop_after == 0) {
-        stop_after = INT_MAX;
+        stop_after = BLE_GATT_DISC_D_TEST_MAX_DSCS;
     }
 
     for (i = 0; i < stop_after && dscs[i].chr_val_handle != 0; i++) {
@@ -398,7 +396,6 @@ TEST_CASE(ble_gatt_disc_d_test_oom_all)
      * due to mbuf exhaustion.
      */
     ble_hs_test_util_prev_tx_queue_clear();
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue_pullup() == NULL);
 
     /* Verify that we will resume the stalled GATT procedure in one second. */
@@ -406,11 +403,10 @@ TEST_CASE(ble_gatt_disc_d_test_oom_all)
     TEST_ASSERT(ticks_until == BLE_GATT_RESUME_RATE_TICKS);
 
     /* Verify the procedure proceeds after mbufs become available. */
-    os_mbuf_free_chain(oms);
+    rc = os_mbuf_free_chain(oms);
+    TEST_ASSERT_FATAL(rc == 0);
     os_time_advance(ticks_until);
     ble_gattc_timer();
-
-    ble_hs_test_util_tx_all();
 
     /* Exhaust the msys pool.  Leave one mbuf for the forthcoming response. */
     oms = ble_hs_test_util_mbuf_alloc_all_but(1);
@@ -420,7 +416,6 @@ TEST_CASE(ble_gatt_disc_d_test_oom_all)
      * due to mbuf exhaustion.
      */
     ble_hs_test_util_prev_tx_queue_clear();
-    ble_hs_test_util_tx_all();
     TEST_ASSERT(ble_hs_test_util_prev_tx_dequeue_pullup() == NULL);
 
     /* Verify that we will resume the stalled GATT procedure in one second. */
@@ -428,11 +423,10 @@ TEST_CASE(ble_gatt_disc_d_test_oom_all)
     TEST_ASSERT(ticks_until == BLE_GATT_RESUME_RATE_TICKS);
 
     /* Verify the procedure succeeds after mbufs become available. */
-    os_mbuf_free_chain(oms);
+    rc = os_mbuf_free_chain(oms);
+    TEST_ASSERT_FATAL(rc == 0);
     os_time_advance(ticks_until);
     ble_gattc_timer();
-
-    ble_hs_test_util_tx_all();
 
     ble_hs_test_util_rx_att_err_rsp(1,
                                     BLE_ATT_OP_READ_TYPE_REQ,
