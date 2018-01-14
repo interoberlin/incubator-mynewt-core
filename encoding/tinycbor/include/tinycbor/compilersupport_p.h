@@ -168,6 +168,12 @@ extern "C" {
 #  define unreachable() do {} while (0)
 #endif
 
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__) && \
+    (__GNUC__ * 100 + __GNUC_MINOR__ >= 404) && \
+    (__GNUC__ * 100 + __GNUC_MINOR__ < 701)
+#  pragma GCC optimize("-ffunction-sections")
+#endif
+
 static inline bool add_check_overflow(size_t v1, size_t v2, size_t *r)
 {
 #if ((defined(__GNUC__) && (__GNUC__ >= 5)) && !defined(__INTEL_COMPILER)) || __has_builtin(__builtin_add_overflow)
