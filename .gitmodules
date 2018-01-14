@@ -1,3 +1,0 @@
-[submodule "hw/bsp/nrf51dk-16kbram-openocd"]
-	path = hw/bsp/nrf51dk-16kbram-openocd
-	url = git@github.com:goetzvr/nrf51dk-16kbram-openocd.git
