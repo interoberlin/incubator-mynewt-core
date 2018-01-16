@@ -35,6 +35,7 @@ STATS_SECT_START(lora_mac_stats)
     STATS_SECT_ENTRY(unconfirmed_tx)
     STATS_SECT_ENTRY(confirmed_tx_fail)
     STATS_SECT_ENTRY(confirmed_tx_good)
+    STATS_SECT_ENTRY(tx_mac_flush)
     STATS_SECT_ENTRY(rx_errors)
     STATS_SECT_ENTRY(rx_frames)
     STATS_SECT_ENTRY(rx_mic_failures)
@@ -80,9 +81,9 @@ struct lora_rx_info
     /*!
      * Receive window
      *
-     * [0: Rx window 1, 1: Rx window 2]
+     * [0: Rx window 1, 1: Rx window 2, 2: class C only. Not 1 or 2]
      */
-    uint8_t rxslot: 1;
+    uint8_t rxslot: 2;
 
     /*!
      * Set if an acknowledgement was received
@@ -204,16 +205,15 @@ int lora_app_port_open(uint8_t port, lora_txd_func txd_cb, lora_rxd_func rxd_cb)
 int lora_app_port_close(uint8_t port);
 
 /**
- * Configure an application port. This configures the datarate for uplink
- * packets and the number of retries for confirmed packets.
+ * Configure an application port. This configures the number of retries for
+ * confirmed packets.
  *
  * @param port Port number
- * @param datarate Data rate for uplink packets
  * @param retries NUmmber of retries for confirmed packets
  *
  * @return int A return code from set of lora return codes
  */
-int lora_app_port_cfg(uint8_t port, uint8_t datarate, uint8_t retries);
+int lora_app_port_cfg(uint8_t port, uint8_t retries);
 
 /**
  * Send a packet on a port.
@@ -258,6 +258,11 @@ int lora_app_join(uint8_t *dev_eui, uint8_t *app_eui, uint8_t *app_key,
 
 /* Performs a link check */
 int lora_app_link_check(void);
+
+/*
+ * Maximum payload that can be sent in the next frame.
+ */
+int lora_app_mtu(void);
 
 #endif
 

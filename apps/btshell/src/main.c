@@ -1023,18 +1023,6 @@ btshell_gap_event(struct ble_gap_event *event, void *arg)
 
         return 0;
 
-    case BLE_GAP_EVENT_DISC_COMPLETE:
-        console_printf("scanning finished\n");
-        return 0;
-
-    case BLE_GAP_EVENT_ADV_COMPLETE:
-        console_printf("advertising complete.\n");
-        return 0;
-
-    case BLE_GAP_EVENT_CONN_CANCEL:
-        console_printf("connection procedure cancelled.\n");
-        return 0;
-
     case BLE_GAP_EVENT_CONN_UPDATE:
         console_printf("connection updated; status=%d ",
                        event->conn_update.status);
@@ -1057,6 +1045,23 @@ btshell_gap_event(struct ble_gap_event *event, void *arg)
                            (unsigned long)event->passkey.params.numcmp);
         }
         console_printf("\n");
+        return 0;
+
+
+    case BLE_GAP_EVENT_DISC_COMPLETE:
+        console_printf("discovery complete; reason=%d\n",
+                       event->disc_complete.reason);
+        return 0;
+
+    case BLE_GAP_EVENT_ADV_COMPLETE:
+#if MYNEWT_VAL(BLE_EXT_ADV)
+        console_printf("advertise complete; reason=%d, instance=%u, handle=%d\n",
+                       event->adv_complete.reason, event->adv_complete.instance,
+                       event->adv_complete.conn_handle);
+#else
+        console_printf("advertise complete; reason=%d\n",
+                       event->adv_complete.reason);
+#endif
         return 0;
 
     case BLE_GAP_EVENT_ENC_CHANGE:
@@ -1409,6 +1414,17 @@ btshell_write_reliable(uint16_t conn_handle,
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+int
+btshell_ext_adv_configure(uint8_t instance,
+                          const struct ble_gap_ext_adv_params *params,
+                          int8_t *selected_tx_power)
+{
+    return ble_gap_ext_adv_configure(instance, params, selected_tx_power,
+                                     btshell_gap_event, NULL);
+}
+#endif
+
 int
 btshell_adv_stop(void)
 {
@@ -1541,15 +1557,6 @@ btshell_scan_cancel(void)
     int rc;
 
     rc = ble_gap_disc_cancel();
-    return rc;
-}
-
-int
-btshell_set_adv_data(struct ble_hs_adv_fields *adv_fields)
-{
-    int rc;
-
-    rc = ble_gap_adv_set_fields(adv_fields);
     return rc;
 }
 
@@ -1986,9 +1993,7 @@ btshell_l2cap_send(uint16_t conn_handle, uint16_t idx, uint16_t bytes)
     rc = ble_l2cap_send(coc->chan, sdu_tx);
     if (rc) {
         console_printf("Could not send data rc=%d\n", rc);
-        if (rc == BLE_HS_EBUSY) {
-            os_mbuf_free_chain(sdu_tx);
-        }
+        os_mbuf_free_chain(sdu_tx);
     }
 
     return rc;

@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <string.h>
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
 #include "os/os.h"
@@ -35,6 +36,7 @@ STATS_NAME_START(lora_mac_stats)
     STATS_NAME(lora_mac_stats, unconfirmed_tx)
     STATS_NAME(lora_mac_stats, confirmed_tx_fail)
     STATS_NAME(lora_mac_stats, confirmed_tx_good)
+    STATS_NAME(lora_mac_stats, tx_mac_flush)
     STATS_NAME(lora_mac_stats, rx_errors)
     STATS_NAME(lora_mac_stats, rx_frames)
     STATS_NAME(lora_mac_stats, rx_mic_failures)
@@ -59,6 +61,9 @@ uint8_t g_lora_app_eui[LORA_EUI_LEN];
 
 /* Application Key */
 uint8_t g_lora_app_key[LORA_KEY_LEN];
+
+/* Flag to denote if we last sent a mac command */
+uint8_t g_lora_node_last_tx_mac_cmd;
 
 #if !MYNEWT_VAL(LORA_NODE_CLI)
 LoRaMacPrimitives_t g_lora_primitives;
@@ -149,25 +154,6 @@ lora_pkt_alloc(void)
     return p;
 }
 
-#if !MYNEWT_VAL(LORA_NODE_CLI)
-static struct os_mbuf *
-lora_node_alloc_empty_pkt(void)
-{
-    struct os_mbuf *om;
-    struct lora_pkt_info *lpkt;
-
-    om = lora_pkt_alloc();
-    if (om) {
-        /* XXX: what to do for datarate here? */
-        lpkt = LORA_PKT_INFO_PTR(om);
-        lpkt->port = 0;
-        lpkt->pkt_type = MCPS_UNCONFIRMED;
-        lpkt->txdinfo.datarate = DR_0;
-    }
-    return om;
-}
-#endif
-
 /**
  * This is the application to mac layer transmit interface.
  *
@@ -178,16 +164,45 @@ lora_node_mcps_request(struct os_mbuf *om)
 {
     int rc;
 
+    lora_node_log(LORA_NODE_LOG_APP_TX, 0, OS_MBUF_PKTLEN(om), (uint32_t)om);
     rc = os_mqueue_put(&g_lora_mac_data.lm_txq, &g_lora_mac_data.lm_evq, om);
     assert(rc == 0);
 }
 
+/**
+ * What's the maximum payload which can be sent on next frame
+ *
+ * @return int payload length, negative on error.
+ */
+int
+lora_node_mtu(void)
+{
+    struct sLoRaMacTxInfo info;
+    int rc;
+
+    rc = LoRaMacQueryTxPossible(0, &info);
+    if (rc != LORAMAC_STATUS_MAC_CMD_LENGTH_ERROR) {
+        return info.MaxPossiblePayload;
+    }
+    return -1;
+}
+
 #if !MYNEWT_VAL(LORA_NODE_CLI)
-void
+static void
 lora_node_reset_txq_timer(void)
 {
     /* XXX: For now, just reset timer to fire off in one second */
     os_callout_reset(&g_lora_mac_data.lm_txq_timer, OS_TICKS_PER_SEC);
+}
+
+/**
+ * Posts an event to the lora mac task to check the transmit queue for
+ * more packets.
+ */
+void
+lora_node_chk_txq(void)
+{
+    os_eventq_put(&g_lora_mac_data.lm_evq, &g_lora_mac_data.lm_txq.mq_ev);
 }
 
 bool
@@ -221,6 +236,9 @@ lora_node_mac_mcps_confirm(McpsConfirm_t *confirm)
 
     /* Copy confirmation info into lora packet info */
     om = confirm->om;
+    if (om == NULL) {
+        return;
+    }
     lpkt = LORA_PKT_INFO_PTR(om);
     lpkt->status = confirm->Status;
     lpkt->txdinfo.datarate = confirm->Datarate;
@@ -309,6 +327,7 @@ lora_node_get_batt_status(void)
     return 0;
 }
 
+
 /**
  * Process transmit enqueued event
  *
@@ -330,44 +349,67 @@ lora_mac_proc_tx_q_event(struct os_event *ev)
 
     /* If busy just leave */
     if (lora_mac_tx_state() == LORAMAC_STATUS_BUSY) {
+        /* XXX: this should not be needed */
         lora_node_reset_txq_timer();
         return;
     }
 
     /*
-     * XXX: there is a disconnect in the stack here.
-     * The LoRaMacQueryTxPossible() routine uses the Default channel rate
-     * to determine if the frame can be sent if ADR is not enabled. However,
-     * the stack can set the data it wants to send in the request. If these
-     * two are different there will be problems. Not sure why the app is even
-     * specifying data rate. But I guess we can leave it for now and hope
-     * that the app does not use a datarate that is different than the
-     * default.
-     */
-
-    /*
      * Check if possible to send frame. If a MAC command length error we
      * need to send an empty, unconfirmed frame to flush mac commands.
      */
+    lpkt = NULL;
     while (1) {
         mp = STAILQ_FIRST(&g_lora_mac_data.lm_txq.mq_head);
         if (mp == NULL) {
+            /* If an ack has been requested, send one */
+            if (lora_mac_srv_ack_requested()) {
+                g_lora_node_last_tx_mac_cmd = 0;
+                goto send_empty_msg;
+            } else {
+                /* Check for any mac commands */
+                if (lora_mac_cmd_buffer_len() != 0) {
+                    g_lora_node_last_tx_mac_cmd = 1;
+                    goto send_empty_msg;
+                }
+            }
             break;
         }
 
         rc = LoRaMacQueryTxPossible(mp->omp_len, &txinfo);
         if (rc == LORAMAC_STATUS_MAC_CMD_LENGTH_ERROR) {
-            /* Need to flush MAC commands. Send empty unconfirmed frame */
-            om = lora_node_alloc_empty_pkt();
-            if (!om) {
-                lora_node_reset_txq_timer();
-                return;
+            /*
+             * XXX: an ugly hack for now. If the server decides to send MAC
+             * commands all the time, it could be that we never send the
+             * data packet enqueued as we cannot add more data to it. For now,
+             * just alternate between sending the packet on the queue and
+             * a mac command. Yes, ugly.
+             */
+            if (g_lora_node_last_tx_mac_cmd) {
+                rc = LORAMAC_STATUS_OK;
+                goto send_from_txq;
             }
+
+            g_lora_node_last_tx_mac_cmd = 1;
+
+            /* Need to flush MAC commands. Send empty unconfirmed frame */
+            STATS_INC(lora_mac_stats, tx_mac_flush);
+            /* NOTE: no need to get a mbuf. */
+send_empty_msg:
+            lpkt = NULL;
+            om = NULL;
+            memset(&req, 0, sizeof(McpsReq_t));
+            req.Type = MCPS_UNCONFIRMED;
+            rc = LORAMAC_STATUS_OK;
         } else {
+send_from_txq:
             om = os_mqueue_get(&g_lora_mac_data.lm_txq);
             assert(om != NULL);
+            lpkt = LORA_PKT_INFO_PTR(om);
+            req.om = om;
+            req.Type = lpkt->pkt_type;
+            g_lora_node_last_tx_mac_cmd = 0;
         }
-        lpkt = LORA_PKT_INFO_PTR(om);
 
         if (rc != LORAMAC_STATUS_OK) {
             /* Check if length error or mac command error */
@@ -380,27 +422,17 @@ lora_mac_proc_tx_q_event(struct os_event *ev)
         }
 
         /* Form MCPS request */
-        req.om = om;
-        req.Type = lpkt->pkt_type;
         switch (req.Type) {
         case MCPS_UNCONFIRMED:
-            req.Req.Unconfirmed.fPort = lpkt->port;
-            req.Req.Unconfirmed.fBuffer = om->om_data;
-            req.Req.Unconfirmed.fBufferSize = OS_MBUF_PKTLEN(om);
-            req.Req.Unconfirmed.Datarate = lpkt->txdinfo.datarate;
+            if (lpkt) {
+                req.Req.Unconfirmed.fPort = lpkt->port;
+            }
             evstatus = LORAMAC_EVENT_INFO_STATUS_OK;
             break;
         case MCPS_CONFIRMED:
             req.Req.Confirmed.fPort = lpkt->port;
-            req.Req.Confirmed.fBuffer = om->om_data;
-            req.Req.Confirmed.fBufferSize = OS_MBUF_PKTLEN(om);
-            req.Req.Confirmed.Datarate = lpkt->txdinfo.datarate;
             req.Req.Confirmed.NbTrials = lpkt->txdinfo.retries;
             evstatus = LORAMAC_EVENT_INFO_STATUS_OK;
-            break;
-        case MCPS_MULTICAST:
-            /* XXX: implement */
-            evstatus = LORAMAC_EVENT_INFO_STATUS_ERROR;
             break;
         case MCPS_PROPRIETARY:
             /* XXX: not allowed */
@@ -425,13 +457,15 @@ lora_mac_proc_tx_q_event(struct os_event *ev)
             case LORAMAC_STATUS_LENGTH_ERROR:
                 evstatus = LORAMAC_EVENT_INFO_STATUS_TX_DR_PAYLOAD_SIZE_ERROR;
                 break;
+            /* XXX: handle BUSY differently here I think. Need to requeue
+               at head */
             default:
                 evstatus = LORAMAC_EVENT_INFO_STATUS_ERROR;
                 break;
             }
 
             if (evstatus == LORAMAC_EVENT_INFO_STATUS_OK) {
-                break;
+                return;
             }
         }
 
@@ -440,17 +474,17 @@ lora_mac_proc_tx_q_event(struct os_event *ev)
          * continue processing transmit queue.
          */
 proc_txq_om_done:
-        lpkt->status = evstatus;
-        lora_app_mcps_confirm(om);
+        if (lpkt) {
+            lpkt->status = evstatus;
+            lora_app_mcps_confirm(om);
+        }
     }
 }
 
 static void
 lora_mac_txq_timer_cb(struct os_event *ev)
 {
-    if (!lora_node_txq_empty()) {
-        lora_mac_proc_tx_q_event(NULL);
-    }
+    lora_mac_proc_tx_q_event(NULL);
 }
 
 /**
@@ -574,14 +608,21 @@ lora_mac_join_event(struct os_event *ev)
     }
 }
 
+/**
+ * lora mac link chk event
+ *
+ * Called from the Lora MAC task when a link check event has been posted
+ * to it. This event gets posted when link check API gets called.
+ *
+ *
+ * @param ev
+ */
 static void
 lora_mac_link_chk_event(struct os_event *ev)
 {
-    int err;
     MlmeReq_t mlmeReq;
     LoRaMacStatus_t rc;
     LoRaMacEventInfoStatus_t status;
-    struct os_mbuf *om;
 
     mlmeReq.Type = MLME_LINK_CHECK;
     rc = LoRaMacMlmeRequest(&mlmeReq);
@@ -595,6 +636,8 @@ lora_mac_link_chk_event(struct os_event *ev)
         break;
     }
 
+    lora_node_log(LORA_NODE_LOG_LINK_CHK, 0, 0, status);
+
     /* If status is OK */
     if (status != LORAMAC_EVENT_INFO_STATUS_OK) {
         if (lora_link_chk_cb_func) {
@@ -602,17 +645,11 @@ lora_mac_link_chk_event(struct os_event *ev)
         }
     } else {
         /*
-         * If nothing on transmit queue this will sit around until the
-         * application decides to send its next packet. In this case, we
-         * create a dummy frame to send the command.
+         * If nothing on transmit queue, we need to send event so that link
+         * check gets sent.
          */
         if (lora_node_txq_empty()) {
-            om = lora_node_alloc_empty_pkt();
-            if (om) {
-                err = os_mqueue_put(&g_lora_mac_data.lm_txq,
-                                 &g_lora_mac_data.lm_evq, om);
-                assert(err == 0);
-            }
+            lora_node_chk_txq();
         }
     }
 }

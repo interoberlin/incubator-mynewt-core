@@ -2403,7 +2403,6 @@ ble_ll_conn_created(struct ble_ll_conn_sm *connsm, struct ble_mbuf_hdr *rxhdr)
     uint8_t *evbuf;
     uint32_t endtime;
     uint32_t usecs;
-    int rx_phy_mode;
 
     /* XXX: TODO this assumes we received in 1M phy */
 
@@ -2437,14 +2436,10 @@ ble_ll_conn_created(struct ble_ll_conn_sm *connsm, struct ble_mbuf_hdr *rxhdr)
          */
         connsm->last_anchor_point = rxhdr->beg_cputime;
 
-#if BLE_LL_BT5_PHY_SUPPORTED
-        rx_phy_mode = connsm->phy_data.rx_phy_mode;
-#else
-        rx_phy_mode = BLE_PHY_MODE_1M;
-#endif
         usecs = rxhdr->rem_usecs + 1250 +
                 (connsm->tx_win_off * BLE_LL_CONN_TX_WIN_USECS) +
-                ble_ll_pdu_tx_time_get(BLE_CONNECT_REQ_LEN, rx_phy_mode);
+                ble_ll_pdu_tx_time_get(BLE_CONNECT_REQ_LEN,
+                                       rxhdr->rxinfo.phy_mode);
 
         if (rxhdr->rxinfo.channel < BLE_PHY_NUM_DATA_CHANS) {
             switch (rxhdr->rxinfo.phy) {
@@ -2781,6 +2776,7 @@ ble_ll_conn_is_peer_adv(uint8_t addr_type, uint8_t *adva, int index)
             break;
         }
 
+#if (MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_PRIVACY) == 1)
         /* Check if peer uses RPA. If so and it match, use it as controller
          * supports privacy mode
          */
@@ -2806,6 +2802,7 @@ ble_ll_conn_is_peer_adv(uint8_t addr_type, uint8_t *adva, int index)
         }
         peer_addr = g_ble_ll_resolv_list[index].rl_identity_addr;
         break;
+#endif
     default:
         peer_addr = NULL;
         break;
@@ -2892,9 +2889,11 @@ ble_ll_conn_event_halt(void)
  *
  * @param pdu_type
  * @param rxbuf
+ * @param ble_hdr
  */
 void
-ble_ll_init_rx_pkt_in(uint8_t pdu_type, uint8_t *rxbuf, struct ble_mbuf_hdr *ble_hdr)
+ble_ll_init_rx_pkt_in(uint8_t pdu_type, uint8_t *rxbuf,
+                      struct ble_mbuf_hdr *ble_hdr)
 {
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_PRIVACY)
     int8_t rpa_index;
@@ -2911,10 +2910,32 @@ ble_ll_init_rx_pkt_in(uint8_t pdu_type, uint8_t *rxbuf, struct ble_mbuf_hdr *ble
         return;
     }
 
+    if (!BLE_MBUF_HDR_CRC_OK(ble_hdr)) {
+        goto scan_continue;
+    }
+
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+    if (BLE_MBUF_HDR_AUX_INVALID(ble_hdr)) {
+        goto scan_continue;
+    }
     if (pdu_type == BLE_ADV_PDU_TYPE_ADV_EXT_IND) {
-        /* Do nothing, we need AUX_CONN_RSP*/
-        return;
+        if (BLE_MBUF_HDR_WAIT_AUX(ble_hdr)) {
+            /* Just continue scanning. We are waiting for AUX */
+            if (!ble_ll_sched_aux_scan(ble_hdr, connsm->scansm,
+                                      ble_hdr->rxinfo.user_data)) {
+               /* Wait for aux conn response */
+                ble_hdr->rxinfo.user_data = NULL;
+            }
+            goto scan_continue;
+        }
+    }
+
+    if (CONN_F_AUX_CONN_REQ(connsm)) {
+        /* Wait for connection response */
+        if (pdu_type != BLE_ADV_PDU_TYPE_AUX_CONNECT_RSP) {
+            return;
+        }
+        ble_ll_scan_aux_data_free(ble_hdr->rxinfo.user_data);
     }
 #endif
 
@@ -2975,9 +2996,14 @@ ble_ll_init_rx_pkt_in(uint8_t pdu_type, uint8_t *rxbuf, struct ble_mbuf_hdr *ble
 #endif
 #endif
         ble_ll_conn_created(connsm, NULL);
-    } else {
-        ble_ll_scan_chk_resume();
+        return;
     }
+
+scan_continue:
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+    ble_ll_scan_aux_data_free(ble_hdr->rxinfo.user_data);
+#endif
+    ble_ll_scan_chk_resume();
 }
 
 /**
@@ -3068,6 +3094,11 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
     /* Get connection state machine to use if connection to be established */
     connsm = g_ble_ll_conn_create_sm;
 
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+    scansm = connsm->scansm;
+    ble_hdr->rxinfo.user_data =scansm->cur_aux_data;
+#endif
+
     rc = -1;
     pdu_type = rxbuf[0] & BLE_ADV_PDU_HDR_TYPE_MASK;
     pyld_len = rxbuf[1] & BLE_ADV_PDU_HDR_LEN_MASK;
@@ -3076,10 +3107,11 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
         /* Invalid packet - make sure we do not wait for AUX_CONNECT_RSP */
         ble_ll_conn_reset_pending_aux_conn_rsp();
+        scansm->cur_aux_data = NULL;
 #endif
 
-        /* Ignore this packet - do not send to LL */
-        goto init_rx_isr_ignore_exit;
+        /* Ignore this packet */
+        goto init_rx_isr_exit;
     }
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
@@ -3098,8 +3130,6 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
     inita_is_rpa = 0;
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
-    scansm = connsm->scansm;
-
     if (pdu_type == BLE_ADV_PDU_TYPE_ADV_EXT_IND) {
         if (!scansm) {
             goto init_rx_isr_exit;
@@ -3112,8 +3142,12 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
         if (rc < 0) {
             /* No memory or broken packet */
             ble_hdr->rxinfo.flags |= BLE_MBUF_HDR_F_AUX_INVALID;
+            ble_ll_scan_aux_data_free(scansm->cur_aux_data);
+            scansm->cur_aux_data = NULL;
             goto init_rx_isr_exit;
         }
+
+        ble_hdr->rxinfo.user_data = aux_data;
     }
 #endif
 
@@ -3122,6 +3156,9 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
                                     &adv_addr, &addr_type,
                                     &init_addr, &init_addr_type,
                                     &ext_adv_mode)) {
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+        ble_hdr->rxinfo.flags |= BLE_MBUF_HDR_F_AUX_INVALID;
+#endif
         goto init_rx_isr_exit;
     }
 
@@ -3135,21 +3172,12 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
 
         /* If this is not connectable adv mode, lets skip it */
         if (!(ext_adv_mode & BLE_LL_EXT_ADV_MODE_CONN)) {
-            ble_ll_scan_aux_data_free(aux_data);
             goto init_rx_isr_exit;
         }
 
         if (!adv_addr) {
-            /*If address is not here it is beacon. Wait for aux */
-            if (ble_ll_sched_aux_scan(ble_hdr, scansm, aux_data)) {
-                ble_ll_scan_aux_data_free(aux_data);
-            } else {
-                ble_hdr->rxinfo.flags |= BLE_MBUF_HDR_F_AUX_PTR_WAIT;
-            }
+            ble_hdr->rxinfo.flags |= BLE_MBUF_HDR_F_AUX_PTR_WAIT;
             goto init_rx_isr_exit;
-        } else {
-            /*Ok, we got device address. Remove aux data. We don't need it*/
-            ble_ll_scan_aux_data_free(aux_data);
         }
 
         if (!init_addr) {
@@ -3286,11 +3314,18 @@ ble_ll_init_rx_isr_end(uint8_t *rxbuf, uint8_t crcok,
     }
 
     CONN_F_CONN_REQ_TXD(connsm) = 1;
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
     if (ble_hdr->rxinfo.channel < BLE_PHY_NUM_DATA_CHANS) {
         /* Lets wait for AUX_CONNECT_RSP */
         CONN_F_AUX_CONN_REQ(connsm) = 1;
+        /* Keep aux data until we get scan response */
+        scansm->cur_aux_data = ble_hdr->rxinfo.user_data;
+        ble_hdr->rxinfo.user_data = NULL;
         STATS_INC(ble_ll_stats, aux_conn_req_tx);
     }
+#endif
+
     STATS_INC(ble_ll_conn_stats, conn_req_txd);
 
 init_rx_isr_exit:
@@ -3319,7 +3354,6 @@ init_rx_isr_exit:
         ble_ll_rx_pdu_in(rxpdu);
     }
 
-init_rx_isr_ignore_exit:
     if (rc) {
         ble_ll_state_set(BLE_LL_STATE_STANDBY);
     }

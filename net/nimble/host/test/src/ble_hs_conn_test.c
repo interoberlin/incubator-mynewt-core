@@ -60,7 +60,7 @@ TEST_CASE(ble_hs_conn_test_direct_connect_success)
     TEST_ASSERT(ble_gap_master_in_progress());
 
     /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
-    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+    ble_hs_test_util_hci_ack_set(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
                              BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
 
     /* Receive successful connection complete event. */
@@ -70,7 +70,7 @@ TEST_CASE(ble_hs_conn_test_direct_connect_success)
     evt.connection_handle = 2;
     evt.role = BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER;
     memcpy(evt.peer_addr, addr.val, 6);
-    rc = ble_gap_rx_conn_complete(&evt);
+    rc = ble_gap_rx_conn_complete(&evt, 0);
     TEST_ASSERT(rc == 0);
     TEST_ASSERT(!ble_gap_master_in_progress());
 
@@ -117,7 +117,7 @@ TEST_CASE(ble_hs_conn_test_direct_connectable_success)
     TEST_ASSERT(ble_gap_adv_active());
 
     /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
-    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+    ble_hs_test_util_hci_ack_set(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
                              BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
 
     /* Receive successful connection complete event. */
@@ -127,7 +127,7 @@ TEST_CASE(ble_hs_conn_test_direct_connectable_success)
     evt.connection_handle = 2;
     evt.role = BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE;
     memcpy(evt.peer_addr, addr.val, 6);
-    rc = ble_gap_rx_conn_complete(&evt);
+    rc = ble_gap_rx_conn_complete(&evt, 0);
     TEST_ASSERT(rc == 0);
     TEST_ASSERT(!ble_gap_master_in_progress());
     TEST_ASSERT(!ble_gap_adv_active());
@@ -182,7 +182,7 @@ TEST_CASE(ble_hs_conn_test_undirect_connectable_success)
     TEST_ASSERT(ble_gap_adv_active());
 
     /* ble_gap_rx_conn_complete() will send extra HCI command, need phony ack */
-    ble_hs_test_util_set_ack(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
+    ble_hs_test_util_hci_ack_set(ble_hs_hci_util_opcode_join(BLE_HCI_OGF_LE,
                              BLE_HCI_OCF_LE_RD_REM_FEAT), 0);
 
     /* Receive successful connection complete event. */
@@ -192,7 +192,7 @@ TEST_CASE(ble_hs_conn_test_undirect_connectable_success)
     evt.connection_handle = 2;
     evt.role = BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE;
     memcpy(evt.peer_addr, addr.val, 6);
-    rc = ble_gap_rx_conn_complete(&evt);
+    rc = ble_gap_rx_conn_complete(&evt, 0);
     TEST_ASSERT(rc == 0);
     TEST_ASSERT(!ble_gap_master_in_progress());
     TEST_ASSERT(!ble_gap_adv_active());

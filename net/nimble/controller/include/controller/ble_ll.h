@@ -156,6 +156,7 @@ STATS_SECT_START(ble_ll_stats)
     STATS_SECT_ENTRY(adv_txg)
     STATS_SECT_ENTRY(adv_late_starts)
     STATS_SECT_ENTRY(adv_resched_pdu_fail)
+    STATS_SECT_ENTRY(adv_drop_event)
     STATS_SECT_ENTRY(sched_state_conn_errs)
     STATS_SECT_ENTRY(sched_state_adv_errs)
     STATS_SECT_ENTRY(scan_starts)
@@ -175,6 +176,8 @@ STATS_SECT_START(ble_ll_stats)
     STATS_SECT_ENTRY(aux_chain_cnt)
     STATS_SECT_ENTRY(aux_chain_err)
     STATS_SECT_ENTRY(adv_evt_dropped)
+    STATS_SECT_ENTRY(scan_timer_stopped)
+    STATS_SECT_ENTRY(scan_timer_restarted)
 STATS_SECT_END
 extern STATS_SECT_DECL(ble_ll_stats) ble_ll_stats;
 

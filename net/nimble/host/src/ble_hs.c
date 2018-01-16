@@ -22,7 +22,6 @@
 #include <string.h>
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
-#include "bsp/bsp.h"
 #include "stats/stats.h"
 #include "os/os.h"
 #include "console/console.h"
@@ -125,20 +124,20 @@ ble_hs_evq_set(struct os_eventq *evq)
     ble_hs_evq = evq;
 }
 
+#if MYNEWT_VAL(BLE_HS_DEBUG)
 int
 ble_hs_locked_by_cur_task(void)
 {
     struct os_task *owner;
 
-#if MYNEWT_VAL(BLE_HS_DEBUG)
     if (!os_started()) {
         return ble_hs_dbg_mutex_locked;
     }
-#endif
 
     owner = ble_hs_mutex.mu_owner;
     return owner != NULL && owner == os_sched_get_current_task();
 }
+#endif
 
 /**
  * Indicates whether the host's parent task is currently running.
@@ -243,7 +242,7 @@ ble_hs_wakeup_tx(void)
          conn != NULL;
          conn = SLIST_NEXT(conn, bhc_next)) {
 
-        if (conn->bhc_flags && BLE_HS_CONN_F_TX_FRAG) {
+        if (conn->bhc_flags & BLE_HS_CONN_F_TX_FRAG) {
             rc = ble_hs_wakeup_tx_conn(conn);
             if (rc != 0) {
                 goto done;
@@ -306,9 +305,6 @@ ble_hs_sync(void)
     rc = ble_hs_startup_go();
     if (rc == 0) {
         ble_hs_sync_state = BLE_HS_SYNC_STATE_GOOD;
-        if (ble_hs_cfg.sync_cb != NULL) {
-            ble_hs_cfg.sync_cb();
-        }
     } else {
         ble_hs_sync_state = BLE_HS_SYNC_STATE_BAD;
     }
@@ -316,6 +312,13 @@ ble_hs_sync(void)
     ble_hs_timer_sched(BLE_HS_SYNC_RETRY_RATE);
 
     if (rc == 0) {
+        rc = ble_hs_misc_restore_irks();
+        assert(rc == 0);
+
+        if (ble_hs_cfg.sync_cb != NULL) {
+            ble_hs_cfg.sync_cb();
+        }
+
         STATS_INC(ble_hs_stats, sync);
     }
 
@@ -556,9 +559,6 @@ ble_hs_start(void)
 
     ble_hs_sync();
 
-    rc = ble_hs_misc_restore_irks();
-    assert(rc == 0);
-
     return 0;
 }
 
@@ -631,6 +631,7 @@ ble_hs_init(void)
     /* These get initialized here to allow unit tests to run without a zeroed
      * bss.
      */
+    ble_hs_reset_reason = 0;
     ble_hs_ev_tx_notifications = (struct os_event) {
         .ev_cb = ble_hs_event_tx_notify,
     };
