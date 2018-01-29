@@ -53,7 +53,7 @@ struct log_info {
     uint8_t li_version;
 };
 
-struct log_info g_log_info;
+extern struct log_info g_log_info;
 
 struct log {
 };
@@ -75,15 +75,18 @@ log_init(void)
 
 #define log_printf(...)
 
-/*
- * Dummy handler exports.
- */
-const struct log_handler log_console_handler;
-const struct log_handler log_cbmem_handler;
-const struct log_handler log_fcb_handler;
 
 #ifdef __cplusplus
 }
 #endif
+
+#if MYNEWT_VAL(LOG_CONSOLE)
+extern const struct log_handler log_console_handler;
+#endif
+extern const struct log_handler log_cbmem_handler;
+#if MYNEWT_VAL(LOG_FCB)
+extern const struct log_handler log_fcb_handler;
+#endif
+
 
 #endif /* __SYS_LOG_STUB_H__ */

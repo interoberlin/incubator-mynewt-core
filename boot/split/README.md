@@ -42,7 +42,7 @@ See [split image architecture](http://mynewt.apache.org/latest/os/modules/split/
 `libs/split` contains the following components
 
 * The split app configuration which tells the system whether to run the "loader" or the "app"
-* The newrmgr commands to access split functionality
+* The newtmgr commands to access split functionality
 * The functions used by the loader to check and run a split application
 
 ## Examples
