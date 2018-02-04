@@ -41,7 +41,7 @@
 #jlink_load
 . $CORE_PATH/hw/scripts/openocd.sh
 
-CFG="-f /home/gvr/.openocd/openocd_nrf52.cfg"
+CFG="-f repos/apache-mynewt-core/hw/bsp/nrf52dk/openocd_nrf52.cfg"
 
 if [ "$MFG_IMAGE" ]; then
     FLASH_OFFSET=0
