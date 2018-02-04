@@ -6,9 +6,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -28,19 +28,18 @@
 #  - NO_GDB set if we should not start gdb to debug
 #
 
-. $CORE_PATH/hw/scripts/jlink.sh
+#. $CORE_PATH/hw/scripts/jlink.sh
+
+#FILE_NAME=$BIN_BASENAME.elf
+#JLINK_DEV="nRF51422_xxAC"
+
+#jlink_debug
+. $CORE_PATH/hw/scripts/openocd.sh
 
 FILE_NAME=$BIN_BASENAME.elf
+CFG="-f /home/gvr/.openocd/openocd_nrf52.cfg"
+# Exit openocd when gdb detaches.
+EXTRA_JTAG_CMD="$EXTRA_JTAG_CMD; nrf52.cpu configure -event gdb-detach {if {[nrf52.cpu curstate] eq \"halted\"} resume;shutdown}"
 
-if [ $# -gt 2 ]; then
-    SPLIT_ELF_NAME=$3.elf
-    # TODO -- this magic number 0x42000 is the location of the second image
-    # slot. we should either get this from a flash map file or somehow learn
-    # this from the image itself
-    EXTRA_GDB_CMDS="add-symbol-file $SPLIT_ELF_NAME 0x8000 -readnow"
-fi
-
-JLINK_DEV="nRF52"
-
-jlink_debug
+openocd_debug
 
