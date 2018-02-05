@@ -25,6 +25,9 @@ syscfg.defs:
     BOOT_SERIAL:
         description: 'Support image upgrade over serial within bootloader'
         value: 0
+    BOOT_FORCE:
+        description: 'Boot image in slot 0 regardless of image header integrity'
+        value: 0
 
 syscfg.vals:
     SYSINIT_CONSTRAIN_INIT: 0

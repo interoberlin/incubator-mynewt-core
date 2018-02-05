@@ -41,7 +41,6 @@ int
 main(void)
 {
     struct boot_rsp rsp;
-    int rc;
 
     hal_bsp_init();
 
@@ -51,10 +50,39 @@ main(void)
     flash_map_init();
 #endif
 
+
+/*
+ * The BOOT_FORCE syscfg.yml parameter
+ * allows flashing and debugging nRF51 and nRF52 app ELFs
+ * from the PC via GDB/Eclipse
+ * without having to the invoke 'newt create-image'
+ * to add a valid image header.
+ * If BOOT_FORCE is enabled, the image in slot 0 will be booted
+ * even when the image header is not present, intact or valid.
+ */
+#if MYNEWT_VAL(BOOT_FORCE)
+    // Disregard function return code
+    boot_go(&rsp);
+
+    /*
+     * Flash address of the app image slot 0 + image header size,
+     * see
+     *  bsp/nrf51dk-16kbram/nrf51xxaa.ld
+     * and
+     *  bsp/nrf52dk/nrf52xxaa.ld
+     */
+    // TODO: Replace with address variable from linker script
+    uint32_t app0_origin = 0x00008000;
+    // TODO: Replace with _imghdr_size variable from linker script
+    uint8_t  app0_header_size = 0x20;
+    hal_system_start((void*) (app0_origin + app0_header_size));
+#else
+    int rc;
     rc = boot_go(&rsp);
     assert(rc == 0);
 
     hal_system_start((void *)(rsp.br_image_addr + rsp.br_hdr->ih_hdr_size));
+#endif
 
     return 0;
 }
