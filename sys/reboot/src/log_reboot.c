@@ -19,10 +19,7 @@
 
 #include <string.h>
 #include <assert.h>
-#include "sysinit/sysinit.h"
-#include "syscfg/syscfg.h"
-#include "sysflash/sysflash.h"
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "log/log.h"
 #include "bootutil/image.h"
 #include "bootutil/bootutil.h"
@@ -39,7 +36,7 @@
 
 static struct log_handler *reboot_log_handler;
 static struct log reboot_log;
-static uint16_t reboot_cnt;
+uint16_t reboot_cnt;
 static uint16_t soft_reboot;
 static char reboot_cnt_str[12];
 static char soft_reboot_str[12];

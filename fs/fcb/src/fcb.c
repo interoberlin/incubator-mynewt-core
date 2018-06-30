@@ -204,6 +204,9 @@ fcb_sector_hdr_read(struct fcb *fcb, struct flash_area *fap,
     if (fdap->fd_magic != fcb->f_magic) {
         return FCB_ERR_MAGIC;
     }
+    if (fdap->fd_ver != fcb->f_version) {
+        return FCB_ERR_VERSION;
+    }
     return 1;
 }
 
@@ -232,9 +235,8 @@ fcb_offset_last_n(struct fcb *fcb, uint8_t entries,
         if (i == 0) {
             /* Start from the beginning of fcb entries */
             *last_n_entry = loc;
-        }
-        /* Update last_n_entry after n entries and keep updating */
-        else if (i > (entries - 1)) {
+        } else if (i > (entries - 1)) {
+            /* Update last_n_entry after n entries and keep updating */
             fcb_getnext(fcb, last_n_entry);
         }
         i++;

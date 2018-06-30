@@ -99,6 +99,7 @@
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_SPI_MODULE_ENABLED
 #define HAL_CORTEX_MODULE_ENABLED
+#define HAL_TIM_MODULE_ENABLED
 #endif
 
 /* ########################## HSE/HSI Values adaptation ##################### */
@@ -246,7 +247,7 @@
 * Deactivated: CRC code cleaned from driver
 */
 
-#define USE_SPI_CRC                     1U
+#define USE_SPI_CRC                     0U
 
 /* Includes ------------------------------------------------------------------*/
 /**

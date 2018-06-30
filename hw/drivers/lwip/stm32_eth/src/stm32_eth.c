@@ -17,13 +17,11 @@
  * under the License.
  */
 
-#include <syscfg/syscfg.h>
+#include "os/mynewt.h"
 
 #include <hal/hal_gpio.h>
 #include <hal/hal_timer.h>
-#include <bsp/cmsis_nvic.h>
-
-#include <os/os_cputime.h>
+#include <mcu/cmsis_nvic.h>
 
 #if MYNEWT_VAL(MCU_STM32F4)
 #include <bsp/stm32f4xx_hal_conf.h>
@@ -134,7 +132,7 @@ stm32_eth_fill_rx(struct stm32_eth_state *ses)
     }
 }
 
-static struct pbuf *
+static void
 stm32_eth_input(struct stm32_eth_state *ses)
 {
     struct stm32_eth_desc *sed;
@@ -178,8 +176,6 @@ stm32_eth_input(struct stm32_eth_state *ses)
         ses->st_eth.Instance->DMASR = ETH_DMASR_RBUS;
         ses->st_eth.Instance->DMARPDR = 0;
     }
-
-    return p;
 }
 
 void

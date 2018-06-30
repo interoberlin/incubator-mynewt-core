@@ -16,13 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 #include <stdio.h>
 #include <string.h>
 
-#include "sysinit/sysinit.h"
-#include "syscfg/syscfg.h"
-#include "sysflash/sysflash.h"
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "testutil/testutil.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
@@ -40,11 +38,13 @@ struct flash_area *fa_sectors;
 
 TEST_CASE_DECL(flash_map_test_case_1)
 TEST_CASE_DECL(flash_map_test_case_2)
+TEST_CASE_DECL(flash_map_test_case_3)
 
 TEST_SUITE(flash_map_test_suite)
 {
     flash_map_test_case_1();
     flash_map_test_case_2();
+    flash_map_test_case_3();
 }
 
 #if MYNEWT_VAL(SELFTEST)

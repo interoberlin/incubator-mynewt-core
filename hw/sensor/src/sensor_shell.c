@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 #if MYNEWT_VAL(SENSOR_CLI)
 
@@ -25,10 +25,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <assert.h>
-
-#include "defs/error.h"
-
-#include "os/os.h"
 
 #include "sensor/sensor.h"
 #include "sensor/accel.h"
@@ -44,7 +40,6 @@
 #include "console/console.h"
 #include "shell/shell.h"
 #include "hal/hal_i2c.h"
-#include "os/os_cputime.h"
 #include "parse/parse.h"
 
 static int sensor_cmd_exec(int, char **);
@@ -226,6 +221,10 @@ sensor_cmd_list_sensors(void)
     sensor_mgr_unlock();
 }
 
+/*
+ * Convenience API to convert floats to strings,
+ * might loose some precision due to rounding
+ */
 char*
 sensor_ftostr(float num, char *fltstr, int len)
 {

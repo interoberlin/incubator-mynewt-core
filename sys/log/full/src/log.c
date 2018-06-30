@@ -22,9 +22,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "sysinit/sysinit.h"
-#include "syscfg/syscfg.h"
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "cbmem/cbmem.h"
 #include "log/log.h"
 
@@ -35,6 +33,7 @@
 struct log_info g_log_info;
 
 static STAILQ_HEAD(, log) g_log_list = STAILQ_HEAD_INITIALIZER(g_log_list);
+static const char *g_log_module_list[ MYNEWT_VAL(LOG_MAX_USER_MODULES) ];
 static uint8_t log_inited;
 static uint8_t log_written;
 
@@ -44,6 +43,14 @@ struct shell_cmd g_shell_log_cmd = {
     .sc_cmd = "log",
     .sc_cmd_func = shell_log_dump_all_cmd
 };
+
+#if MYNEWT_VAL(LOG_FCB_SLOT1)
+int shell_log_slot1_cmd(int, char **);
+struct shell_cmd g_shell_slot1_cmd = {
+    .sc_cmd = "slot1",
+    .sc_cmd_func = shell_log_slot1_cmd,
+};
+#endif
 #endif
 
 void
@@ -62,11 +69,14 @@ log_init(void)
     log_inited = 1;
     log_written = 0;
 
-    g_log_info.li_version = LOG_VERSION_V2;
+    g_log_info.li_version = MYNEWT_VAL(LOG_VERSION);
     g_log_info.li_next_index = 0;
 
 #if MYNEWT_VAL(LOG_CLI)
     shell_cmd_register(&g_shell_log_cmd);
+#if MYNEWT_VAL(LOG_FCB_SLOT1)
+    shell_cmd_register(&g_shell_slot1_cmd);
+#endif
 #endif
 
 #if MYNEWT_VAL(LOG_NEWTMGR)
@@ -87,6 +97,73 @@ log_list_get_next(struct log *log)
     }
 
     return (next);
+}
+
+uint8_t
+log_module_register(uint8_t id, const char *name)
+{
+    uint8_t idx;
+
+    if (id == 0) {
+        /* Find free idx */
+        for (idx = 0;
+             idx < MYNEWT_VAL(LOG_MAX_USER_MODULES) && g_log_module_list[idx];
+             idx++) {
+        }
+
+        if (idx == MYNEWT_VAL(LOG_MAX_USER_MODULES)) {
+            /* No free idx */
+            return 0;
+        }
+    } else {
+        if ((id < LOG_MODULE_PERUSER) ||
+                (id >= LOG_MODULE_PERUSER + MYNEWT_VAL(LOG_MAX_USER_MODULES))) {
+            /* Invalid id */
+            return 0;
+        }
+
+        idx = id - LOG_MODULE_PERUSER;
+    }
+
+    if (g_log_module_list[idx]) {
+        /* Already registered with selected id */
+        return 0;
+    }
+
+    g_log_module_list[idx] = name;
+
+    return idx + LOG_MODULE_PERUSER;
+}
+
+const char *
+log_module_get_name(uint8_t module)
+{
+    if (module < LOG_MODULE_PERUSER) {
+        switch (module) {
+        case LOG_MODULE_DEFAULT:
+            return "DEFAULT";
+        case LOG_MODULE_OS:
+            return "OS";
+        case LOG_MODULE_NEWTMGR:
+            return "NEWTMGR";
+        case LOG_MODULE_NIMBLE_CTLR:
+            return "NIMBLE_CTLR";
+        case LOG_MODULE_NIMBLE_HOST:
+            return "NIMBLE_HOST";
+        case LOG_MODULE_NFFS:
+            return "NFFS";
+        case LOG_MODULE_REBOOT:
+            return "REBOOT";
+        case LOG_MODULE_IOTIVITY:
+            return "IOTIVITY";
+        case LOG_MODULE_TEST:
+            return "TEST";
+        }
+    } else if (module - LOG_MODULE_PERUSER < MYNEWT_VAL(LOG_MAX_USER_MODULES)) {
+        return g_log_module_list[module - LOG_MODULE_PERUSER];
+    }
+
+    return NULL;
 }
 
 /**
@@ -174,12 +251,17 @@ log_register(char *name, struct log *log, const struct log_handler *lh,
     assert(!log_written);
 
     log->l_name = name;
-    log->l_log = (struct log_handler *)lh;
+    log->l_log = lh;
     log->l_arg = arg;
     log->l_level = level;
 
     if (!log_registered(log)) {
         STAILQ_INSERT_TAIL(&g_log_list, log, l_next);
+    }
+
+    /* Call registered handler now - log structure is set and put on list */
+    if (log->l_log->log_registered) {
+        log->l_log->log_registered(log);
     }
 
     /* If this is a persisted log, read the index from its most recent entry.
@@ -200,15 +282,16 @@ log_register(char *name, struct log *log, const struct log_handler *lh,
     return (0);
 }
 
-int
-log_append(struct log *log, uint16_t module, uint16_t level, void *data,
-        uint16_t len)
+static int
+log_append_prepare(struct log *log, uint8_t module, uint8_t level, uint8_t etype,
+                   struct log_entry_hdr *ue)
 {
-    struct log_entry_hdr *ue;
     int rc;
     int sr;
     struct os_timeval tv;
     uint32_t idx;
+
+    rc = 0;
 
     if (log->l_name == NULL || log->l_log == NULL) {
         rc = -1;
@@ -229,8 +312,6 @@ log_append(struct log *log, uint16_t module, uint16_t level, void *data,
         goto err;
     }
 
-    ue = (struct log_entry_hdr *) data;
-
     OS_ENTER_CRITICAL(sr);
     idx = g_log_info.li_next_index++;
     OS_EXIT_CRITICAL(sr);
@@ -246,6 +327,27 @@ log_append(struct log *log, uint16_t module, uint16_t level, void *data,
     ue->ue_level = level;
     ue->ue_module = module;
     ue->ue_index = idx;
+#if MYNEWT_VAL(LOG_VERSION) > 2
+    ue->ue_etype = etype;
+#else
+    assert(etype == LOG_ETYPE_STRING);
+#endif
+
+err:
+    return (rc);
+}
+
+int
+log_append_typed(struct log *log, uint8_t module, uint8_t level, uint8_t etype,
+                 void *data, uint16_t len)
+{
+    int rc;
+
+    rc = log_append_prepare(log, module, level, etype,
+                            (struct log_entry_hdr *)data);
+    if (rc != 0) {
+        goto err;
+    }
 
     rc = log->l_log->log_append(log, data, len + LOG_ENTRY_HDR_SIZE);
     if (rc != 0) {
@@ -254,6 +356,44 @@ log_append(struct log *log, uint16_t module, uint16_t level, void *data,
 
     return (0);
 err:
+    return (rc);
+}
+
+int
+log_append_mbuf_typed(struct log *log, uint8_t module, uint8_t level,
+                      uint8_t etype, struct os_mbuf *om)
+{
+    int rc;
+
+    if (!log->l_log->log_append_mbuf) {
+        rc = -1;
+        goto err;
+    }
+
+    om = os_mbuf_pullup(om, sizeof(struct log_entry_hdr));
+    if (!om) {
+        rc = -1;
+        goto err;
+    }
+
+    rc = log_append_prepare(log, module, level, etype,
+                            (struct log_entry_hdr *)om->om_data);
+    if (rc != 0) {
+        goto err;
+    }
+
+    rc = log->l_log->log_append_mbuf(log, om);
+    if (rc != 0) {
+        goto err;
+    }
+
+    os_mbuf_free_chain(om);
+
+    return (0);
+err:
+    if (om) {
+        os_mbuf_free_chain(om);
+    }
     return (rc);
 }
 
@@ -303,6 +443,20 @@ log_read(struct log *log, void *dptr, void *buf, uint16_t off,
     int rc;
 
     rc = log->l_log->log_read(log, dptr, buf, off, len);
+
+    return (rc);
+}
+
+int log_read_mbuf(struct log *log, void *dptr, struct os_mbuf *om, uint16_t off,
+                  uint16_t len)
+{
+    int rc;
+
+    if (!om || !log->l_log->log_read_mbuf) {
+        return 0;
+    }
+
+    rc = log->l_log->log_read_mbuf(log, dptr, om, off, len);
 
     return (rc);
 }

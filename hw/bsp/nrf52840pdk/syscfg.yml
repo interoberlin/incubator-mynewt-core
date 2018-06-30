@@ -40,7 +40,7 @@ syscfg.defs:
         value: 7
 
     UART_1:
-        description: 'Bitbanger UART'
+        description: 'Whether to enable UART1'
         value:  0
     UART_1_PIN_TX:
         description: 'TX pin for UART1'
@@ -48,6 +48,45 @@ syscfg.defs:
     UART_1_PIN_RX:
         description: 'RX pin for UART1'
         value:  -1
+    UART_1_PIN_RTS:
+        description: 'RTS pin for UART1'
+        value:  -1
+    UART_1_PIN_CTS:
+        description: 'CTS pin for UART1'
+        value: -1
+
+    SPI_0_MASTER_PIN_SCK:
+        description: 'SCK pin for SPI_0_MASTER'
+        value:  45
+    SPI_0_MASTER_PIN_MOSI:
+        description: 'MOSI pin for SPI_0_MASTER'
+        value:  46
+    SPI_0_MASTER_PIN_MISO:
+        description: 'MISO pin for SPI_0_MASTER'
+        value:  47
+
+    SPI_0_SLAVE_PIN_SCK:
+        description: 'SCK pin for SPI_0_SLAVE'
+        value:  45
+    SPI_0_SLAVE_PIN_MOSI:
+        description: 'MOSI pin for SPI_0_SLAVE'
+        value:  46
+    SPI_0_SLAVE_PIN_MISO:
+        description: 'MISO pin for SPI_0_SLAVE'
+        value:  47
+    SPI_0_SLAVE_PIN_SS:
+        description: 'SS pin for SPI_0_SLAVE'
+        value:  44
+
+    I2C_0_PIN_SCL:
+        description: 'SCL pin for I2C_0'
+        value:  27
+    I2C_0_PIN_SDA:
+        description: 'SDA pin for I2C_0'
+        value:  26
+    I2C_0_FREQ_KHZ:
+        description: 'Frequency in khz for I2C_0 bus'
+        value:  100
 
     TIMER_0:
         description: 'NRF52840 Timer 0'
@@ -67,6 +106,9 @@ syscfg.defs:
     TIMER_5:
         description: 'NRF52 RTC 0'
         value:  0
+    PWM_3:
+        description: 'NRF52 PWM 3'
+        value: 0
 
 syscfg.defs.BLE_LP_CLOCK:
     TIMER_0:
@@ -81,6 +123,16 @@ syscfg.vals:
     COREDUMP_FLASH_AREA: FLASH_AREA_IMAGE_1
     MCU_DCDC_ENABLED: 1
     XTAL_32768: 1
+    QSPI_FLASH_SECTOR_SIZE: 4096
+    QSPI_FLASH_PAGE_SIZE: 256
+    QSPI_FLASH_SECTOR_COUNT: 4096
+    QSPI_PIN_CS: 17
+    QSPI_PIN_SCK: 19
+    QSPI_PIN_DIO0: 20
+    QSPI_PIN_DIO1: 21
+    QSPI_PIN_DIO2: 22
+    QSPI_PIN_DIO3: 23
+
 
 syscfg.vals.BLE_LP_CLOCK:
     OS_CPUTIME_FREQ: 32768

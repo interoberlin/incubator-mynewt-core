@@ -17,11 +17,10 @@
  * under the License.
  */
 
-#include <os/os.h>
 #include <string.h>
 #include <stdio.h>
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 #if MYNEWT_VAL(LOG_NEWTMGR)
 
@@ -53,6 +52,11 @@ static struct mgmt_handler log_nmgr_group_handlers[] = {
     [LOGS_NMGR_OP_LOGS_LIST] = {log_nmgr_logs_list, NULL}
 };
 
+struct log_encode_data {
+    uint32_t counter;
+    CborEncoder *enc;
+};
+
 /**
  * Log encode entry
  * @param log structure, log_offset, dataptr, len
@@ -63,15 +67,18 @@ log_nmgr_encode_entry(struct log *log, struct log_offset *log_offset,
                       void *dptr, uint16_t len)
 {
     struct log_entry_hdr ueh;
-    char data[128];
-    int dlen;
+    uint8_t data[128];
     int rc;
     int rsp_len;
     CborError g_err = CborNoError;
-    CborEncoder *penc = (CborEncoder*)log_offset->lo_arg;
+    struct log_encode_data *ed = log_offset->lo_arg;
     CborEncoder rsp;
     struct CborCntWriter cnt_writer;
     CborEncoder cnt_encoder;
+#if MYNEWT_VAL(LOG_VERSION) > 2
+    CborEncoder str_encoder;
+    int off;
+#endif
 
     rc = log_read(log, dptr, &ueh, 0, sizeof(ueh));
     if (rc != sizeof(ueh)) {
@@ -100,14 +107,14 @@ log_nmgr_encode_entry(struct log *log, struct log_offset *log_offset,
         goto err;
     }
 
-    dlen = min(len-sizeof(ueh), 128);
-
-    rc = log_read(log, dptr, data, sizeof(ueh), dlen);
+#if MYNEWT_VAL(LOG_VERSION) < 3
+    rc = log_read(log, dptr, data, sizeof(ueh), min(len - sizeof(ueh), 128));
     if (rc < 0) {
         rc = OS_ENOENT;
         goto err;
     }
     data[rc] = 0;
+#endif
 
     /*calculate whether this would fit */
     /* create a counting encoder for cbor */
@@ -115,9 +122,49 @@ log_nmgr_encode_entry(struct log *log, struct log_offset *log_offset,
     cbor_encoder_init(&cnt_encoder, &cnt_writer.enc, 0);
 
     /* NOTE This code should exactly match what is below */
+    rsp_len = log_offset->lo_data_len;
     g_err |= cbor_encoder_create_map(&cnt_encoder, &rsp, CborIndefiniteLength);
+#if MYNEWT_VAL(LOG_VERSION) > 2
+    switch (ueh.ue_etype) {
+    case LOG_ETYPE_CBOR:
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "cbor");
+        break;
+    case LOG_ETYPE_BINARY:
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "bin");
+        break;
+    case LOG_ETYPE_STRING:
+    default:
+        /* no need for type here */
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "str");
+        break;
+    }
+
     g_err |= cbor_encode_text_stringz(&rsp, "msg");
-    g_err |= cbor_encode_text_stringz(&rsp, data);
+
+    /*
+     * Write entry data as byte string. Since this may not fit into single
+     * chunk of data we will write as indefinite-length byte string which is
+     * basically a indefinite-length container with definite-length strings
+     * inside.
+     */
+    g_err |= cbor_encoder_create_indef_byte_string(&rsp, &str_encoder);
+    for (off = sizeof(ueh); (off < len) && !g_err; ) {
+        rc = log_read(log, dptr, data, off, sizeof(data));
+        if (rc < 0) {
+            g_err |= 1;
+            break;
+        }
+        g_err |= cbor_encode_byte_string(&str_encoder, data, rc);
+        off += rc;
+    }
+    g_err |= cbor_encoder_close_container(&rsp, &str_encoder);
+#else
+    g_err |= cbor_encode_text_stringz(&rsp, "msg");
+    g_err |= cbor_encode_text_stringz(&rsp, (char *)data);
+#endif
     g_err |= cbor_encode_text_stringz(&rsp, "ts");
     g_err |= cbor_encode_int(&rsp, ueh.ue_ts);
     g_err |= cbor_encode_text_stringz(&rsp, "level");
@@ -127,17 +174,60 @@ log_nmgr_encode_entry(struct log *log, struct log_offset *log_offset,
     g_err |= cbor_encode_text_stringz(&rsp, "module");
     g_err |= cbor_encode_uint(&rsp,  ueh.ue_module);
     g_err |= cbor_encoder_close_container(&cnt_encoder, &rsp);
-    rsp_len = log_offset->lo_data_len;
     rsp_len += cbor_encode_bytes_written(&cnt_encoder);
-    if (rsp_len > 400) {
+    /*
+     * Make sure that at least single entry is returned, even in case response
+     * exceeds this magic value. This is to make sure we can read long log
+     * entries, even if they have to be read one by one.
+     */
+    if ((rsp_len > 400) && (ed->counter > 0)) {
         rc = OS_ENOMEM;
         goto err;
     }
     log_offset->lo_data_len = rsp_len;
 
-    g_err |= cbor_encoder_create_map(penc, &rsp, CborIndefiniteLength);
+    g_err |= cbor_encoder_create_map(ed->enc, &rsp, CborIndefiniteLength);
+#if MYNEWT_VAL(LOG_VERSION) > 2
+    switch (ueh.ue_etype) {
+    case LOG_ETYPE_CBOR:
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "cbor");
+        break;
+    case LOG_ETYPE_BINARY:
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "bin");
+        break;
+    case LOG_ETYPE_STRING:
+    default:
+        /* no need for type here */
+        g_err |= cbor_encode_text_stringz(&rsp, "type");
+        g_err |= cbor_encode_text_stringz(&rsp, "str");
+        break;
+    }
+
     g_err |= cbor_encode_text_stringz(&rsp, "msg");
-    g_err |= cbor_encode_text_stringz(&rsp, data);
+
+    /*
+     * Write entry data as byte string. Since this may not fit into single
+     * chunk of data we will write as indefinite-length byte string which is
+     * basically a indefinite-length container with definite-length strings
+     * inside.
+     */
+    g_err |= cbor_encoder_create_indef_byte_string(&rsp, &str_encoder);
+    for (off = sizeof(ueh); (off < len) && !g_err; ) {
+        rc = log_read(log, dptr, data, off, sizeof(data));
+        if (rc < 0) {
+            g_err |= 1;
+            break;
+        }
+        g_err |= cbor_encode_byte_string(&str_encoder, data, rc);
+        off += rc;
+    }
+    g_err |= cbor_encoder_close_container(&rsp, &str_encoder);
+#else
+    g_err |= cbor_encode_text_stringz(&rsp, "msg");
+    g_err |= cbor_encode_text_stringz(&rsp, (char *)data);
+#endif
     g_err |= cbor_encode_text_stringz(&rsp, "ts");
     g_err |= cbor_encode_int(&rsp, ueh.ue_ts);
     g_err |= cbor_encode_text_stringz(&rsp, "level");
@@ -146,13 +236,16 @@ log_nmgr_encode_entry(struct log *log, struct log_offset *log_offset,
     g_err |= cbor_encode_uint(&rsp,  ueh.ue_index);
     g_err |= cbor_encode_text_stringz(&rsp, "module");
     g_err |= cbor_encode_uint(&rsp,  ueh.ue_module);
-    g_err |= cbor_encoder_close_container(penc, &rsp);
+    g_err |= cbor_encoder_close_container(ed->enc, &rsp);
+
+    ed->counter++;
 
     if (g_err) {
         return MGMT_ERR_ENOMEM;
     }
     return (0);
 err:
+    ed->counter++;
     return (rc);
 }
 
@@ -172,6 +265,7 @@ log_encode_entries(struct log *log, CborEncoder *cb,
     CborError g_err = CborNoError;
     struct CborCntWriter cnt_writer;
     CborEncoder cnt_encoder;
+    struct log_encode_data ed;
 
     memset(&log_offset, 0, sizeof(log_offset));
 
@@ -193,7 +287,10 @@ log_encode_entries(struct log *log, CborEncoder *cb,
     g_err |= cbor_encode_text_stringz(cb, "entries");
     g_err |= cbor_encoder_create_array(cb, &entries, CborIndefiniteLength);
 
-    log_offset.lo_arg       = &entries;
+    ed.counter = 0;
+    ed.enc = &entries;
+
+    log_offset.lo_arg       = &ed;
     log_offset.lo_index     = index;
     log_offset.lo_ts        = ts;
     log_offset.lo_data_len  = rsp_len;
@@ -341,7 +438,7 @@ static int
 log_nmgr_module_list(struct mgmt_cbuf *cb)
 {
     int module;
-    char *str;
+    const char *str;
     CborError g_err = CborNoError;
     CborEncoder modules;
 
@@ -355,7 +452,7 @@ log_nmgr_module_list(struct mgmt_cbuf *cb)
     module = LOG_MODULE_DEFAULT;
     while (module < LOG_MODULE_MAX) {
         str = LOG_MODULE_STR(module);
-        if (!strcmp(str, "UNKNOWN")) {
+        if (!str) {
             module++;
             continue;
         }

@@ -16,13 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 #include <assert.h>
-#include <os/os.h>
-#include <os/os_trace_api.h>
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "hal/hal_os_tick.h"
 #include "nrf.h"
-#include "bsp/cmsis_nvic.h"
+#include "mcu/cmsis_nvic.h"
 
 /* The OS scheduler requires a low-frequency timer. */
 #if MYNEWT_VAL(OS_SCHEDULING)       && \
@@ -117,7 +116,7 @@ nrf52_timer_handler(void)
     os_sr_t sr;
     uint32_t counter;
 
-    os_trace_enter_isr();
+    os_trace_isr_enter();
     OS_ENTER_CRITICAL(sr);
 
     /* Calculate elapsed ticks and advance OS time. */
@@ -138,7 +137,7 @@ nrf52_timer_handler(void)
     nrf52_os_tick_set_ocmp(g_hal_os_tick.lastocmp + g_hal_os_tick.ticks_per_ostick);
 
     OS_EXIT_CRITICAL(sr);
-    os_trace_exit_isr();
+    os_trace_isr_exit();
 }
 
 void

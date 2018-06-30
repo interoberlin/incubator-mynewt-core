@@ -20,6 +20,9 @@
 #ifndef __MCU_STM32F4_BSP_H_
 #define __MCU_STM32F4_BSP_H_
 
+#include <hal/hal_gpio.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,7 +30,7 @@ extern "C" {
 /**
  * BSP specific UART settings.
  */
-struct stm32f4_uart_cfg {
+struct stm32_uart_cfg {
     USART_TypeDef *suc_uart;			/* UART dev registers */
     volatile uint32_t *suc_rcc_reg;		/* RCC register to modify */
     uint32_t suc_rcc_dev;			/* RCC device ID */

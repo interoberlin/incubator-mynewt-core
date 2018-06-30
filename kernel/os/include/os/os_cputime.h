@@ -17,6 +17,13 @@
  * under the License.
  */
 
+ /**
+  * @addtogroup OSKernel
+  * @{
+  *   @defgroup OSCPUTime High Resolution Timers
+  *   @{
+  */
+
 #ifndef H_OS_CPUTIME_
 #define H_OS_CPUTIME_
 
@@ -77,14 +84,16 @@ extern struct os_cputime_data g_os_cputime;
 #endif
 
 /* Helpful macros to compare cputimes */
+/** evaluates to true if t1 is before t2 in time */
 #define CPUTIME_LT(__t1, __t2) ((int32_t)   ((__t1) - (__t2)) < 0)
+/** evaluates to true if t1 is after t2 in time */
 #define CPUTIME_GT(__t1, __t2) ((int32_t)   ((__t1) - (__t2)) > 0)
+/** evaluates to true if t1 is after t2 in time */
 #define CPUTIME_GEQ(__t1, __t2) ((int32_t)  ((__t1) - (__t2)) >= 0)
+/** evaluates to true if t1 is on or after t2 in time */
 #define CPUTIME_LEQ(__t1, __t2) ((int32_t)  ((__t1) - (__t2)) <= 0)
 
 /**
- * os cputime init
- *
  * Initialize the cputime module. This must be called after os_init is called
  * and before any other timer API are used. This should be called only once
  * and should be called before the hardware timer is used.
@@ -96,8 +105,6 @@ extern struct os_cputime_data g_os_cputime;
 int os_cputime_init(uint32_t clock_freq);
 
 /**
- * os cputime get32
- *
  * Returns the low 32 bits of cputime.
  *
  * @return uint32_t The lower 32 bits of cputime
@@ -106,9 +113,8 @@ uint32_t os_cputime_get32(void);
 
 #if !defined(OS_CPUTIME_FREQ_PWR2)
 /**
- * os cputime nsecs to ticks
- *
  * Converts the given number of nanoseconds into cputime ticks.
+ * Not defined if OS_CPUTIME_FREQ_PWR2 is defined.
  *
  * @param usecs The number of nanoseconds to convert to ticks
  *
@@ -117,9 +123,8 @@ uint32_t os_cputime_get32(void);
 uint32_t os_cputime_nsecs_to_ticks(uint32_t nsecs);
 
 /**
- * os cputime ticks to nsecs
- *
  * Convert the given number of ticks into nanoseconds.
+ * Not defined if OS_CPUTIME_FREQ_PWR2 is defined.
  *
  * @param ticks The number of ticks to convert to nanoseconds.
  *
@@ -128,9 +133,9 @@ uint32_t os_cputime_nsecs_to_ticks(uint32_t nsecs);
 uint32_t os_cputime_ticks_to_nsecs(uint32_t ticks);
 
 /**
- * os cputime delay nsecs
- *
  * Wait until 'nsecs' nanoseconds has elapsed. This is a blocking delay.
+ * Not defined if OS_CPUTIME_FREQ_PWR2 is defined.
+ *
  *
  * @param nsecs The number of nanoseconds to wait.
  */
@@ -141,9 +146,8 @@ void os_cputime_delay_nsecs(uint32_t nsecs);
 #define os_cputime_usecs_to_ticks(x)    (x)
 #define os_cputime_ticks_to_usecs(x)    (x)
 #else
+
 /**
- * os cputime usecs to ticks
- *
  * Converts the given number of microseconds into cputime ticks.
  *
  * @param usecs The number of microseconds to convert to ticks
@@ -153,8 +157,6 @@ void os_cputime_delay_nsecs(uint32_t nsecs);
 uint32_t os_cputime_usecs_to_ticks(uint32_t usecs);
 
 /**
- * os cputime ticks to usecs
- *
  * Convert the given number of ticks into microseconds.
  *
  * @param ticks The number of ticks to convert to microseconds.
@@ -165,8 +167,6 @@ uint32_t os_cputime_ticks_to_usecs(uint32_t ticks);
 #endif
 
 /**
- * os cputime delay ticks
- *
  * Wait until the number of ticks has elapsed. This is a blocking delay.
  *
  * @param ticks The number of ticks to wait.
@@ -174,8 +174,6 @@ uint32_t os_cputime_ticks_to_usecs(uint32_t ticks);
 void os_cputime_delay_ticks(uint32_t ticks);
 
 /**
- * os cputime delay usecs
- *
  * Wait until 'usecs' microseconds has elapsed. This is a blocking delay.
  *
  * @param usecs The number of usecs to wait.
@@ -183,17 +181,16 @@ void os_cputime_delay_ticks(uint32_t ticks);
 void os_cputime_delay_usecs(uint32_t usecs);
 
 /**
- * os cputime timer init
+ * Initialize a CPU timer, using the given HAL timer.
  *
  * @param timer The timer to initialize. Cannot be NULL.
  * @param fp    The timer callback function. Cannot be NULL.
  * @param arg   Pointer to data object to pass to timer.
  */
-void os_cputime_timer_init(struct hal_timer *timer, hal_timer_cb fp, void *arg);
+void os_cputime_timer_init(struct hal_timer *timer, hal_timer_cb fp,
+        void *arg);
 
 /**
- * os cputime timer start
- *
  * Start a cputimer that will expire at 'cputime'. If cputime has already
  * passed, the timer callback will still be called (at interrupt context).
  *
@@ -209,8 +206,6 @@ void os_cputime_timer_init(struct hal_timer *timer, hal_timer_cb fp, void *arg);
 int os_cputime_timer_start(struct hal_timer *timer, uint32_t cputime);
 
 /**
- * os cputimer timer relative
- *
  * Sets a cpu timer that will expire 'usecs' microseconds from the current
  * cputime.
  *
@@ -225,8 +220,6 @@ int os_cputime_timer_start(struct hal_timer *timer, uint32_t cputime);
 int os_cputime_timer_relative(struct hal_timer *timer, uint32_t usecs);
 
 /**
- * os cputime timer stop
- *
  * Stops a cputimer from running. The timer is removed from the timer queue
  * and interrupts are disabled if no timers are left on the queue. Can be
  * called even if timer is not running.
@@ -240,3 +233,8 @@ void os_cputime_timer_stop(struct hal_timer *timer);
 #endif
 
 #endif /* H_OS_CPUTIME_ */
+
+/**
+ *   @} OSCPUTime
+ * @} OSKernel
+ */

@@ -17,12 +17,13 @@
  * under the License.
  */
 
-#include "hal/hal_gpio.h"
-#include "bsp/cmsis_nvic.h"
-#include "os/os_trace_api.h"
 #include <stdlib.h>
-#include "nrf.h"
 #include <assert.h>
+#include "os/mynewt.h"
+#include "hal/hal_gpio.h"
+#include "mcu/cmsis_nvic.h"
+#include "nrf.h"
+#include "mcu/nrf52_hal.h"
 
 /* XXX:
  * 1) The code probably does not handle "re-purposing" gpio very well.
@@ -46,7 +47,8 @@
  *  user specifies a pin that is not used by the processor. If an invalid pin
  *  number is used unexpected and/or erroneous behavior will result.
  */
-#ifdef NRF52
+#if defined(NRF52832_XXAA) || defined(NRF52810_XXAA)
+#define HAL_GPIO_INDEX(pin)     (pin)
 #define HAL_GPIO_PORT(pin)      (NRF_P0)
 #define HAL_GPIO_MASK(pin)      (1 << pin)
 #define HAL_GPIOTE_PIN_MASK     GPIOTE_CONFIG_PSEL_Msk
@@ -85,6 +87,7 @@ hal_gpio_init_in(int pin, hal_gpio_pull_t pull)
 {
     uint32_t conf;
     NRF_GPIO_Type *port;
+    int pin_index = HAL_GPIO_INDEX(pin);
 
     switch (pull) {
     case HAL_GPIO_PULL_UP:
@@ -100,7 +103,7 @@ hal_gpio_init_in(int pin, hal_gpio_pull_t pull)
     }
 
     port = HAL_GPIO_PORT(pin);
-    port->PIN_CNF[pin] = conf;
+    port->PIN_CNF[pin_index] = conf;
     port->DIRCLR = HAL_GPIO_MASK(pin);
 
     return 0;
@@ -121,6 +124,7 @@ int
 hal_gpio_init_out(int pin, int val)
 {
     NRF_GPIO_Type *port;
+    int pin_index = HAL_GPIO_INDEX(pin);
 
     port = HAL_GPIO_PORT(pin);
     if (val) {
@@ -128,7 +132,7 @@ hal_gpio_init_out(int pin, int val)
     } else {
         port->OUTCLR = HAL_GPIO_MASK(pin);
     }
-    port->PIN_CNF[pin] = GPIO_PIN_CNF_DIR_Output;
+    port->PIN_CNF[pin_index] = GPIO_PIN_CNF_DIR_Output;
     port->DIRSET = HAL_GPIO_MASK(pin);
 
     return 0;
@@ -168,9 +172,11 @@ int
 hal_gpio_read(int pin)
 {
     NRF_GPIO_Type *port;
-
     port = HAL_GPIO_PORT(pin);
-    return ((port->IN & HAL_GPIO_MASK(pin)) != 0);
+
+    return (port->DIR & HAL_GPIO_MASK(pin)) ?
+        (port->OUT >> HAL_GPIO_INDEX(pin)) & 1UL :
+        (port->IN >> HAL_GPIO_INDEX(pin)) & 1UL;
 }
 
 /**
@@ -202,10 +208,10 @@ hal_gpio_irq_handler(void)
 {
     int i;
 
-    os_trace_enter_isr();
+    os_trace_isr_enter();
 
     for (i = 0; i < HAL_GPIO_MAX_IRQ; i++) {
-        if (NRF_GPIOTE->EVENTS_IN[i]) {
+        if (NRF_GPIOTE->EVENTS_IN[i] && (NRF_GPIOTE->INTENSET & (1 << i))) {
             NRF_GPIOTE->EVENTS_IN[i] = 0;
             if (hal_gpio_irqs[i].func) {
                 hal_gpio_irqs[i].func(hal_gpio_irqs[i].arg);
@@ -213,7 +219,7 @@ hal_gpio_irq_handler(void)
         }
     }
 
-    os_trace_exit_isr();
+    os_trace_isr_exit();
 }
 
 /*

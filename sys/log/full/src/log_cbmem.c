@@ -16,7 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <os/os.h>
+
+#include "os/mynewt.h"
 #include <cbmem/cbmem.h>
 #include "log/log.h"
 
@@ -39,6 +40,24 @@ err:
 }
 
 static int
+log_cbmem_append_mbuf(struct log *log, struct os_mbuf *om)
+{
+    struct cbmem *cbmem;
+    int rc;
+
+    cbmem = (struct cbmem *) log->l_arg;
+
+    rc = cbmem_append_mbuf(cbmem, om);
+    if (rc != 0) {
+        goto err;
+    }
+
+    return (0);
+err:
+    return (rc);
+}
+
+static int
 log_cbmem_read(struct log *log, void *dptr, void *buf, uint16_t offset,
         uint16_t len)
 {
@@ -50,6 +69,22 @@ log_cbmem_read(struct log *log, void *dptr, void *buf, uint16_t offset,
     hdr = (struct cbmem_entry_hdr *) dptr;
 
     rc = cbmem_read(cbmem, hdr, buf, offset, len);
+
+    return (rc);
+}
+
+static int
+log_cbmem_read_mbuf(struct log *log, void *dptr, struct os_mbuf *om,
+                    uint16_t offset, uint16_t len)
+{
+    struct cbmem *cbmem;
+    struct cbmem_entry_hdr *hdr;
+    int rc;
+
+    cbmem = (struct cbmem *) log->l_arg;
+    hdr = (struct cbmem_entry_hdr *) dptr;
+
+    rc = cbmem_read_mbuf(cbmem, hdr, om, offset, len);
 
     return (rc);
 }
@@ -124,8 +159,9 @@ err:
 const struct log_handler log_cbmem_handler = {
     .log_type = LOG_TYPE_MEMORY,
     .log_read = log_cbmem_read,
+    .log_read_mbuf = log_cbmem_read_mbuf,
     .log_append = log_cbmem_append,
+    .log_append_mbuf = log_cbmem_append_mbuf,
     .log_walk = log_cbmem_walk,
     .log_flush = log_cbmem_flush,
-    .log_rtr_erase = NULL,
 };

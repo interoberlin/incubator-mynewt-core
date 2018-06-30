@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 /* This whole file is conditionally compiled based on whether the
  * log package is configured to use the shell (MYNEWT_VAL(LOG_CLI)).
@@ -28,9 +28,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "os/os.h"
 #include "cbmem/cbmem.h"
 #include "log/log.h"
+#if MYNEWT_VAL(LOG_FCB_SLOT1)
+#include "log/log_fcb_slot1.h"
+#endif
 #include "shell/shell.h"
 #include "console/console.h"
 
@@ -56,11 +58,7 @@ shell_log_dump_entry(struct log *log, struct log_offset *log_offset,
     }
     data[rc] = 0;
 
-    /* XXX: This is evil.  newlib printf does not like 64-bit
-     * values, and this causes memory to be overwritten.  Cast to a
-     * unsigned 32-bit value for now.
-     */
-    console_printf("[%lu] %s\n", (unsigned long) ueh.ue_ts, data);
+    console_printf("[%llu] %s\n", ueh.ue_ts, data);
 
     return (0);
 err:
@@ -102,6 +100,41 @@ shell_log_dump_all_cmd(int argc, char **argv)
 err:
     return (rc);
 }
+
+#if MYNEWT_VAL(LOG_FCB_SLOT1)
+int
+shell_log_slot1_cmd(int argc, char **argv)
+{
+    const struct flash_area *fa;
+    int rc;
+
+    if (argc == 1) {
+        console_printf("slot1 state is: %s\n",
+                       log_fcb_slot1_is_locked() ? "locked" : "unlocked");
+    } else {
+        if (!strcasecmp(argv[1], "lock")) {
+            log_fcb_slot1_lock();
+            console_printf("slot1 locked\n");
+        } else if (!strcasecmp(argv[1], "unlock")) {
+            log_fcb_slot1_unlock();
+            console_printf("slot1 unlocked\n");
+        } else if (!strcasecmp(argv[1], "erase")) {
+            rc = flash_area_open(FLASH_AREA_IMAGE_1, &fa);
+            if (rc) {
+                return -1;
+            }
+
+            flash_area_erase(fa, 0, fa->fa_size);
+
+            console_printf("slot1 erased\n");
+        } else {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+#endif
 
 #endif
 

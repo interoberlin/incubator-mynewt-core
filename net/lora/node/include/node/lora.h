@@ -21,7 +21,7 @@
 #define H_LORA_
 
 #include "stats/stats.h"
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "node/mac/LoRaMac.h"
 
 STATS_SECT_START(lora_mac_stats)
@@ -41,6 +41,10 @@ STATS_SECT_START(lora_mac_stats)
     STATS_SECT_ENTRY(rx_mic_failures)
     STATS_SECT_ENTRY(rx_mlme)
     STATS_SECT_ENTRY(rx_mcps)
+    STATS_SECT_ENTRY(rx_dups)
+    STATS_SECT_ENTRY(rx_invalid)
+    STATS_SECT_ENTRY(no_bufs)
+    STATS_SECT_ENTRY(already_joined)
 STATS_SECT_END
 extern STATS_SECT_DECL(lora_mac_stats) lora_mac_stats;
 
@@ -125,7 +129,28 @@ struct lora_txd_info
     int8_t txpower;
 
     /*!
-     * Provides the number of retransmissions
+     * Initially, 'retries' for confirmed frames is the number of trials
+     * (described below). In the confirmation, this field is set to the
+     * actual # of retries (0 retries if successful on first attempt).
+     *
+     * Number of trials to transmit the frame, if the LoRaMAC layer did not
+     * receive an acknowledgment. The MAC performs a datarate adaptation,
+     * according to the LoRaWAN Specification V1.0.1, chapter 19.4, according
+     * to the following table:
+     *
+     * Transmission nb | Data Rate
+     * ----------------|-----------
+     * 1 (first)       | DR
+     * 2               | DR
+     * 3               | max(DR-1,0)
+     * 4               | max(DR-1,0)
+     * 5               | max(DR-2,0)
+     * 6               | max(DR-2,0)
+     * 7               | max(DR-3,0)
+     * 8               | max(DR-3,0)
+     *
+     * Note, that if NbTrials is set to 1 or 2, the MAC will not decrease
+     * the datarate, in case the LoRaMAC layer did not receive an acknowledgment
      */
     uint8_t retries;
 
@@ -135,7 +160,7 @@ struct lora_txd_info
     uint8_t ack_rxd: 1;
 
     /*!
-     * The transmission time on air of the frame
+     * The transmission time on air of the frame (in msecs)
      */
     uint32_t tx_time_on_air;
 
@@ -145,9 +170,9 @@ struct lora_txd_info
     uint32_t uplink_cntr;
 
     /*!
-     * The uplink frequency related to the frame
+     * The uplink channel related to the frame
      */
-    uint32_t uplink_freq;
+    uint32_t uplink_chan;
 };
 
 /*
@@ -157,7 +182,7 @@ struct lora_txd_info
 struct lora_pkt_info
 {
     uint8_t port;
-    Mcps_t pkt_type;
+    uint8_t pkt_type;
     LoRaMacEventInfoStatus_t status;
 
     union {
@@ -256,8 +281,26 @@ extern lora_link_chk_cb lora_link_chk_cb_func;
 int lora_app_join(uint8_t *dev_eui, uint8_t *app_eui, uint8_t *app_key,
                   uint8_t trials);
 
+/**
+ * Tells whether we have successfully joined a LoRa network or not.
+ *
+ * @return LORA_APP_STATUS_ALREADY_JOINED if joined.
+ */
+int lora_node_chk_if_joined(void);
+
 /* Performs a link check */
 int lora_app_link_check(void);
+
+/**
+ * Query RSSI and SNR average for data received over LoRA.
+ *
+ * @param rssi Pointer to where to store the RSSI.
+ * @param snr Pointer to where to store the SNR.
+ *
+ * @return 0 if we have collected samples. non-zero if not.
+ */
+int lora_node_link_qual(int16_t *rssi, int16_t *snr);
+
 
 /*
  * Maximum payload that can be sent in the next frame.

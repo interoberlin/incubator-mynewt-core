@@ -17,11 +17,10 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 #if MYNEWT_VAL(CONFIG_FCB)
 
-#include <os/os.h>
 #include <fcb/fcb.h>
 #include <string.h>
 
@@ -172,6 +171,9 @@ conf_fcb_compress(struct conf_fcb *cf)
         }
         rc = conf_fcb_var_read(&loc1, buf1, &name1, &val1);
         if (rc) {
+            continue;
+        }
+        if (!val1) {
             continue;
         }
         loc2 = loc1;

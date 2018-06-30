@@ -21,12 +21,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
-#include "syscfg/syscfg.h"
-#include "sysinit/sysinit.h"
+#include "os/mynewt.h"
 #include "bsp/bsp.h"
 #include "log/log.h"
 #include "stats/stats.h"
-#include "os/os.h"
 #include "bsp/bsp.h"
 #include "hal/hal_gpio.h"
 #include "console/console.h"
@@ -71,6 +69,9 @@
 #define BTSHELL_COC_MTU               (256)
 /* We use same pool for incoming and outgoing sdu */
 #define BTSHELL_COC_BUF_COUNT         (3 * MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM))
+
+#define INT_TO_PTR(x)     (void *)((intptr_t)(x))
+#define PTR_TO_INT(x)     (int) ((intptr_t)(x))
 #endif
 
 struct log btshell_log;
@@ -78,20 +79,31 @@ struct log btshell_log;
 bssnz_t struct btshell_conn btshell_conns[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
 int btshell_num_conns;
 
-static void *btshell_svc_mem;
+static os_membuf_t btshell_svc_mem[
+    OS_MEMPOOL_SIZE(BTSHELL_MAX_SVCS, sizeof(struct btshell_svc))
+];
 static struct os_mempool btshell_svc_pool;
 
-static void *btshell_chr_mem;
+static os_membuf_t btshell_chr_mem[
+    OS_MEMPOOL_SIZE(BTSHELL_MAX_CHRS, sizeof(struct btshell_chr))
+];
 static struct os_mempool btshell_chr_pool;
 
-static void *btshell_dsc_mem;
+static os_membuf_t btshell_dsc_mem[
+    OS_MEMPOOL_SIZE(BTSHELL_MAX_DSCS, sizeof(struct btshell_dsc))
+];
 static struct os_mempool btshell_dsc_pool;
 
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM)
-static void *btshell_coc_conn_mem;
+static os_membuf_t btshell_coc_conn_mem[
+    OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
+    sizeof(struct btshell_l2cap_coc))
+];
 static struct os_mempool btshell_coc_conn_pool;
 
-static void *btshell_sdu_coc_mem;
+static os_membuf_t btshell_sdu_coc_mem[
+    OS_MEMPOOL_SIZE(BTSHELL_COC_BUF_COUNT, BTSHELL_COC_MTU)
+];
 struct os_mbuf_pool sdu_os_mbuf_pool;
 static struct os_mempool sdu_coc_mbuf_mempool;
 #endif
@@ -722,12 +734,7 @@ btshell_disc_full_chrs(uint16_t conn_handle)
     }
 
     SLIST_FOREACH(svc, &conn->svcs, next) {
-        if (!svc_is_empty(svc) && !svc->char_disc_sent) {
-            /* Since it might happen that service does not have characteristics
-             * for some reason, lets keep track on services for which we send
-             * characteristic discovery
-             */
-            svc->char_disc_sent = true;
+        if (!svc_is_empty(svc) && SLIST_EMPTY(&svc->chrs)) {
             rc = btshell_disc_all_chrs(conn_handle, svc->svc.start_handle,
                                        svc->svc.end_handle);
             if (rc != 0) {
@@ -891,11 +898,17 @@ btshell_on_write_reliable(uint16_t conn_handle,
 }
 
 static void
-btshell_decode_adv_data(uint8_t *adv_data, uint8_t adv_data_len)
+btshell_decode_adv_data(uint8_t *adv_data, uint8_t adv_data_len, void *arg)
 {
+    struct btshell_scan_opts *scan_opts = arg;
     struct ble_hs_adv_fields fields;
 
     console_printf(" length_data=%d data=", adv_data_len);
+
+    if (scan_opts) {
+        adv_data_len = min(adv_data_len, scan_opts->limit);
+    }
+
     print_bytes(adv_data, adv_data_len);
     console_printf(" fields:\n");
     ble_hs_adv_parse_fields(&fields, adv_data, adv_data_len);
@@ -905,11 +918,16 @@ btshell_decode_adv_data(uint8_t *adv_data, uint8_t adv_data_len)
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
 static void
-btshell_decode_event_type(struct ble_gap_ext_disc_desc *desc)
+btshell_decode_event_type(struct ble_gap_ext_disc_desc *desc, void *arg)
 {
+    struct btshell_scan_opts *scan_opts = arg;
     uint8_t directed = 0;
 
     if (desc->props & BLE_HCI_ADV_LEGACY_MASK) {
+        if (scan_opts && scan_opts->ignore_legacy) {
+            return;
+        }
+
         console_printf("Legacy PDU type %d", desc->legacy_event_type);
         if (desc->legacy_event_type == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND) {
             directed = 1;
@@ -934,14 +952,14 @@ btshell_decode_event_type(struct ble_gap_ext_disc_desc *desc)
     }
 
     switch(desc->data_status) {
-    case BLE_HCI_ADV_COMPLETED:
-        console_printf("completed");
+    case BLE_GAP_EXT_ADV_DATA_STATUS_COMPLETE:
+        console_printf("complete");
         break;
-    case BLE_HCI_ADV_INCOMPLETE:
-        console_printf("incompleted");
+    case BLE_GAP_EXT_ADV_DATA_STATUS_INCOMPLETE:
+        console_printf("incomplete");
         break;
-    case BLE_HCI_ADV_CORRUPTED:
-        console_printf("corrupted");
+    case BLE_GAP_EXT_ADV_DATA_STATUS_TRUNCATED:
+        console_printf("truncated");
         break;
     default:
         console_printf("reserved %d", desc->data_status);
@@ -965,7 +983,7 @@ common_data:
         return;
     }
 
-    btshell_decode_adv_data(desc->data, desc->length_data);
+    btshell_decode_adv_data(desc->data, desc->length_data, arg);
 }
 #endif
 
@@ -1001,7 +1019,7 @@ btshell_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
 #if MYNEWT_VAL(BLE_EXT_ADV)
     case BLE_GAP_EVENT_EXT_DISC:
-        btshell_decode_event_type(&event->ext_disc);
+        btshell_decode_event_type(&event->ext_disc, arg);
         return 0;
 #endif
     case BLE_GAP_EVENT_DISC:
@@ -1019,7 +1037,7 @@ btshell_gap_event(struct ble_gap_event *event, void *arg)
                 return 0;
         }
 
-        btshell_decode_adv_data(event->disc.data, event->disc.length_data);
+        btshell_decode_adv_data(event->disc.data, event->disc.length_data, arg);
 
         return 0;
 
@@ -1521,12 +1539,12 @@ btshell_wl_set(ble_addr_t *addrs, int addrs_count)
 
 int
 btshell_scan(uint8_t own_addr_type, int32_t duration_ms,
-             const struct ble_gap_disc_params *disc_params)
+             const struct ble_gap_disc_params *disc_params, void *cb_args)
 {
     int rc;
 
     rc = ble_gap_disc(own_addr_type, duration_ms, disc_params,
-                      btshell_gap_event, NULL);
+                      btshell_gap_event, cb_args);
     return rc;
 }
 
@@ -1535,7 +1553,8 @@ btshell_ext_scan(uint8_t own_addr_type, uint16_t duration, uint16_t period,
                  uint8_t filter_duplicates, uint8_t filter_policy,
                  uint8_t limited,
                  const struct ble_gap_ext_disc_params *uncoded_params,
-                 const struct ble_gap_ext_disc_params *coded_params)
+                 const struct ble_gap_ext_disc_params *coded_params,
+                 void *cb_args)
 {
 #if !MYNEWT_VAL(BLE_EXT_ADV)
     console_printf("BLE extended advertising not supported.");
@@ -1546,7 +1565,7 @@ btshell_ext_scan(uint8_t own_addr_type, uint16_t duration, uint16_t period,
 
     rc = ble_gap_ext_disc(own_addr_type, duration, period, filter_duplicates,
                           filter_policy, limited, uncoded_params, coded_params,
-                          btshell_gap_event, NULL);
+                          btshell_gap_event, cb_args);
     return rc;
 #endif
 }
@@ -1823,6 +1842,8 @@ btshell_l2cap_coc_accept(uint16_t conn_handle, uint16_t peer_mtu,
 static int
 btshell_l2cap_event(struct ble_l2cap_event *event, void *arg)
 {
+    int accept_response;
+
     switch(event->type) {
         case BLE_L2CAP_EVENT_COC_CONNECTED:
             if (event->connect.status) {
@@ -1846,6 +1867,11 @@ btshell_l2cap_event(struct ble_l2cap_event *event, void *arg)
                                      event->disconnect.chan);
             return 0;
         case BLE_L2CAP_EVENT_COC_ACCEPT:
+            accept_response = PTR_TO_INT(arg);
+            if (accept_response) {
+                return accept_response;
+            }
+
             return btshell_l2cap_coc_accept(event->accept.conn_handle,
                                             event->accept.peer_sdu_size,
                                             event->accept.chan);
@@ -1860,7 +1886,7 @@ btshell_l2cap_event(struct ble_l2cap_event *event, void *arg)
 #endif
 
 int
-btshell_l2cap_create_srv(uint16_t psm)
+btshell_l2cap_create_srv(uint16_t psm, int accept_response)
 {
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) == 0
     console_printf("BLE L2CAP LE COC not supported.");
@@ -1869,7 +1895,7 @@ btshell_l2cap_create_srv(uint16_t psm)
 #else
 
     return ble_l2cap_create_server(psm, BTSHELL_COC_MTU, btshell_l2cap_event,
-                                                                       NULL);
+                                   INT_TO_PTR(accept_response));
 #endif
 }
 
@@ -2020,28 +2046,16 @@ main(int argc, char **argv)
     /* Initialize OS */
     sysinit();
 
-    /* Allocate some application specific memory pools. */
-    btshell_svc_mem = malloc(
-        OS_MEMPOOL_BYTES(BTSHELL_MAX_SVCS, sizeof (struct btshell_svc)));
-    assert(btshell_svc_mem != NULL);
-
+    /* Initialize some application specific memory pools. */
     rc = os_mempool_init(&btshell_svc_pool, BTSHELL_MAX_SVCS,
                          sizeof (struct btshell_svc), btshell_svc_mem,
                          "btshell_svc_pool");
     assert(rc == 0);
 
-    btshell_chr_mem = malloc(
-        OS_MEMPOOL_BYTES(BTSHELL_MAX_CHRS, sizeof (struct btshell_chr)));
-    assert(btshell_chr_mem != NULL);
-
     rc = os_mempool_init(&btshell_chr_pool, BTSHELL_MAX_CHRS,
                          sizeof (struct btshell_chr), btshell_chr_mem,
                          "btshell_chr_pool");
     assert(rc == 0);
-
-    btshell_dsc_mem = malloc(
-        OS_MEMPOOL_BYTES(BTSHELL_MAX_DSCS, sizeof (struct btshell_dsc)));
-    assert(btshell_dsc_mem != NULL);
 
     rc = os_mempool_init(&btshell_dsc_pool, BTSHELL_MAX_DSCS,
                          sizeof (struct btshell_dsc), btshell_dsc_mem,
@@ -2050,10 +2064,6 @@ main(int argc, char **argv)
 
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) != 0
     /* For testing we want to support all the available channels */
-    btshell_sdu_coc_mem = malloc(
-        OS_MEMPOOL_BYTES(BTSHELL_COC_BUF_COUNT, BTSHELL_COC_MTU));
-    assert(btshell_sdu_coc_mem != NULL);
-
     rc = os_mempool_init(&sdu_coc_mbuf_mempool, BTSHELL_COC_BUF_COUNT,
                          BTSHELL_COC_MTU, btshell_sdu_coc_mem,
                          "btshell_coc_sdu_pool");
@@ -2062,11 +2072,6 @@ main(int argc, char **argv)
     rc = os_mbuf_pool_init(&sdu_os_mbuf_pool, &sdu_coc_mbuf_mempool,
                            BTSHELL_COC_MTU, BTSHELL_COC_BUF_COUNT);
     assert(rc == 0);
-
-    btshell_coc_conn_mem = malloc(
-        OS_MEMPOOL_BYTES(MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
-                         sizeof (struct btshell_l2cap_coc)));
-    assert(btshell_coc_conn_mem != NULL);
 
     rc = os_mempool_init(&btshell_coc_conn_pool,
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),

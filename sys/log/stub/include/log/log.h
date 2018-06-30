@@ -20,7 +20,7 @@
 #define __SYS_LOG_STUB_H__
 
 #include <inttypes.h>
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "log/ignore.h"
 
 #ifdef __cplusplus
@@ -75,6 +75,15 @@ log_init(void)
 
 #define log_printf(...)
 
+/*
+ * Dummy handler exports.
+ */
+const struct log_handler log_console_handler;
+const struct log_handler log_cbmem_handler;
+const struct log_handler log_fcb_handler;
+#if MYNEWT_VAL(LOG_FCB_SLOT1)
+const struct log_handler log_fcb_slot1_handler;
+#endif
 
 #ifdef __cplusplus
 }

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 #if MYNEWT_VAL(SENSOR_OIC)
 
@@ -25,10 +25,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <assert.h>
-
-#include "defs/error.h"
-
-#include "os/os.h"
 
 #include "sensor/sensor.h"
 #include "sensor/accel.h"
@@ -45,6 +41,7 @@
 /* OIC */
 #include <oic/oc_rep.h>
 #include <oic/oc_ri.h>
+#include <oic/oc_ri_const.h>
 #include <oic/oc_api.h>
 #include <oic/messaging/coap/observe.h>
 
@@ -706,6 +703,10 @@ sensor_oic_add_resource(struct sensor *sensor, sensor_type_t type)
     return 0;
 }
 
+/*
+ * Iterates through the sensor list and initializes OIC resources
+ * based on each sensor type
+ */
 void
 sensor_oic_init(void)
 {

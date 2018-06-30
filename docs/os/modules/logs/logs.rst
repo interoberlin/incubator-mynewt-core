@@ -4,7 +4,13 @@ Logging
 Mynewt log package supports logging of information within a Mynewt
 application. It allows packages to define their own log streams with
 separate names. It also allows an application to control the output
-destination of logs. ### Description
+destination of logs. 
+
+.. contents::
+  :local:
+  :depth: 2
+
+### Description
 
 In the Mynewt OS, the log package comes in two versions:
 
@@ -22,7 +28,7 @@ follows:
     pkg.req_apis:
         - log
 
- The application's ``pkg.yml`` file specifies the version of the log
+The application's ``pkg.yml`` file specifies the version of the log
 package to use. A project that requires the full logging capability must
 list the ``sys/log/full`` package as a dependency in its ``pkg.yml``
 file:
@@ -32,7 +38,7 @@ file:
     pkg.deps:
         - sys/log/full
 
- You can use the ``sys/log/stub`` package if you want to build your
+You can use the ``sys/log/stub`` package if you want to build your
 application without logging to reduce code size.
 
 Syscfg Settings
@@ -55,7 +61,9 @@ following setting corresponds to LOG\_LEVEL\_ERROR:
 The ``LOG_LEVEL`` setting applies to all modules registered with the log
 package.
 
- ### Log
+Log
+~~~~~~~~~~~~~~~
+
 
 Each log stream requires a ``log`` structure to define its logging
 properties.
@@ -203,5 +211,4 @@ handler:
 Log API and Log Levels
 ~~~~~~~~~~~~~~~~~~~~~~
 
-For more information on the ``log`` API and log levels, see the
-``sys/log/full/include/log/log.h`` header file.
+.. doxygenfile:: full/include/log/log.h

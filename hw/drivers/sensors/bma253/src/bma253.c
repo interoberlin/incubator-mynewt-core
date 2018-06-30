@@ -21,9 +21,9 @@
 #include <math.h>
 #include <string.h>
 
+#include "os/mynewt.h"
 #include "bma253/bma253.h"
 #include "bma253_priv.h"
-#include "defs/error.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_i2c.h"
 
@@ -44,7 +44,6 @@ static struct log bma253_log;
 #define BMA253_NOTIFY_MASK  0x01
 #define BMA253_READ_MASK    0x02
 
-    enum int_route int_route;
 static void
 delay_msec(uint32_t delay)
 {
@@ -3564,11 +3563,13 @@ bma253_write_offsets(struct bma253 * bma253,
 }
 
 int
-bma253_stream_read(struct bma253 * bma253,
-                   bma253_stream_read_func_t read_func,
-                   void * read_arg,
+bma253_stream_read(struct sensor *sensor,
+                   sensor_type_t sensor_type,
+                   sensor_data_func_t read_func,
+                   void *read_arg,
                    uint32_t time_ms)
 {
+    struct bma253 *bma253;
     const struct bma253_cfg * cfg;
     int rc;
     enum bma253_power_mode request_power;
@@ -3579,6 +3580,13 @@ bma253_stream_read(struct bma253 * bma253,
     struct accel_data accel_data[AXIS_ALL];
     struct sensor_accel_data sad;
     struct bma253_private_driver_data *pdd;
+
+    if ((sensor_type & ~(SENSOR_TYPE_ACCELEROMETER |
+                         SENSOR_TYPE_AMBIENT_TEMPERATURE)) != 0) {
+        return SYS_EINVAL;
+    }
+
+    bma253 = (struct bma253 *)SENSOR_GET_DEVICE(sensor);
 
     cfg = &bma253->cfg;
     pdd = &bma253->pdd;
@@ -3675,7 +3683,7 @@ bma253_stream_read(struct bma253 * bma253,
         sad.sad_y_is_valid = 1;
         sad.sad_z_is_valid = 1;
 
-        if (read_func(read_arg, &sad)) {
+        if (read_func(sensor, read_arg, &sad, SENSOR_TYPE_ACCELEROMETER)) {
             break;
         }
 
@@ -4130,25 +4138,51 @@ bma253_power_settings(struct bma253 * bma253,
 }
 
 static int
-sensor_driver_read(struct sensor * sensor,
+sensor_driver_read(struct sensor *sensor,
                    sensor_type_t sensor_type,
                    sensor_data_func_t data_func,
-                   void * data_arg,
+                   void *data_arg,
                    uint32_t timeout)
 {
-    struct bma253 * bma253;
-    const struct bma253_cfg * cfg;
+    int rc;
+    const struct bma253_cfg *cfg;
+    struct bma253 *bma253;
+
+    if ((sensor_type & ~(SENSOR_TYPE_ACCELEROMETER |
+                         SENSOR_TYPE_AMBIENT_TEMPERATURE)) != 0) {
+        rc = SYS_EINVAL;
+        goto err;
+    }
+
+    bma253 = (struct bma253 *)SENSOR_GET_DEVICE(sensor);
+    cfg = &bma253->cfg;
+
+    if (cfg->read_mode == BMA253_READ_M_POLL) {
+        rc = bma253_poll_read(sensor, sensor_type, data_func, data_arg, timeout);
+    } else {
+        rc = bma253_stream_read(sensor, sensor_type, data_func, data_arg, timeout);
+    }
+
+    return 0;
+err:
+    return rc;
+}
+
+int
+bma253_poll_read(struct sensor * sensor,
+                 sensor_type_t sensor_type,
+                 sensor_data_func_t data_func,
+                 void * data_arg,
+                 uint32_t timeout)
+{
+    struct bma253 *bma253;
+    const struct bma253_cfg *cfg;
     enum bma253_power_mode request_power[3];
     int rc;
     struct accel_data accel_data[AXIS_ALL];
     struct sensor_accel_data sad;
     float temp_c;
     struct sensor_temp_data std;
-
-    if ((sensor_type & ~(SENSOR_TYPE_ACCELEROMETER |
-                         SENSOR_TYPE_AMBIENT_TEMPERATURE)) != 0) {
-        return SYS_EINVAL;
-    }
 
     bma253 = (struct bma253 *)SENSOR_GET_DEVICE(sensor);
     cfg = &bma253->cfg;
@@ -4390,8 +4424,16 @@ done:
 }
 
 static int
+sensor_driver_set_config(struct sensor *sensor, void *cfg)
+{
+    struct bma253* bma253 = (struct bma253 *)SENSOR_GET_DEVICE(sensor);
+
+    return bma253_config(bma253, (struct bma253_cfg*)cfg);
+}
+
+static int
 sensor_driver_unset_notification(struct sensor * sensor,
-                               sensor_event_type_t sensor_event_type)
+                                 sensor_event_type_t sensor_event_type)
 {
 #if MYNEWT_VAL(BMA253_INT_ENABLE)
     struct bma253 * bma253;
@@ -4574,9 +4616,14 @@ sensor_driver_handle_interrupt(struct sensor * sensor)
         return rc;
     }
 
-    if ((pdd->registered_mask & BMA253_NOTIFY_MASK) &&
-            (int_status.s_tap_int_active || int_status.d_tap_int_active)) {
-        sensor_mgr_put_notify_evt(&pdd->notify_ctx);
+    if (pdd->registered_mask & BMA253_NOTIFY_MASK) {
+        if (int_status.s_tap_int_active) {
+            sensor_mgr_put_notify_evt(&pdd->notify_ctx, SENSOR_EVENT_TYPE_SINGLE_TAP);
+        }
+
+        if (int_status.d_tap_int_active) {
+            sensor_mgr_put_notify_evt(&pdd->notify_ctx, SENSOR_EVENT_TYPE_DOUBLE_TAP);
+        }
     }
 
     if ((pdd->registered_mask & BMA253_READ_MASK) &&
@@ -4592,6 +4639,7 @@ sensor_driver_handle_interrupt(struct sensor * sensor)
 
 static struct sensor_driver bma253_sensor_driver = {
     .sd_read               = sensor_driver_read,
+    .sd_set_config         = sensor_driver_set_config,
     .sd_get_config         = sensor_driver_get_config,
     .sd_set_trigger_thresh = sensor_driver_set_trigger_thresh,
     .sd_set_notification   = sensor_driver_set_notification,

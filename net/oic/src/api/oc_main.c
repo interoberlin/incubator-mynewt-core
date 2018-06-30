@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <syscfg/syscfg.h>
+#include "os/mynewt.h"
 
 #include "oic/port/mynewt/config.h"
 #include "port/oc_assert.h"
@@ -81,7 +81,9 @@ oc_main_init(oc_handler_t *handler)
     OC_LOG_INFO("oic: Initialized\n");
 
 #ifdef OC_CLIENT
-    handler->requests_entry();
+    if (handler->requests_entry) {
+        handler->requests_entry();
+    }
 #endif
 
     initialized = true;

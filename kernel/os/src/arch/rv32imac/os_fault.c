@@ -16,26 +16,19 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "os_priv.h"
 #include "hal/hal_system.h"
 
 void
 __assert_func(const char *file, int line, const char *func, const char *e)
 {
-    char msg[256];
-
-    if (file) {
-        snprintf(msg, sizeof(msg), "assert @ %s:%d\n", file, line);
-    } else {
-        snprintf(msg, sizeof(msg), "assert @ %p\n",
-                 __builtin_return_address(0));
-    }
-    fputs(msg, stdout);
+    OS_PRINT_ASSERT(file, line, func, e);
     _exit(1);
 }
 

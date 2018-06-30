@@ -21,10 +21,10 @@
 #define H_BTSHELL_PRIV_
 
 #include <inttypes.h>
+#include "os/mynewt.h"
 #include "nimble/ble.h"
 #include "nimble/nimble_opt.h"
 #include "log/log.h"
-#include "os/queue.h"
 
 #include "host/ble_gatt.h"
 #include "host/ble_gap.h"
@@ -63,8 +63,6 @@ SLIST_HEAD(btshell_chr_list, btshell_chr);
 struct btshell_svc {
     SLIST_ENTRY(btshell_svc) next;
     struct ble_gatt_svc svc;
-
-    bool char_disc_sent;
     struct btshell_chr_list chrs;
 };
 
@@ -81,6 +79,11 @@ struct btshell_conn {
     uint16_t handle;
     struct btshell_svc_list svcs;
     struct btshell_l2cap_coc_list coc_list;
+};
+
+struct btshell_scan_opts {
+    uint16_t limit;
+    uint8_t ignore_legacy:1;
 };
 
 extern struct btshell_conn btshell_conns[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
@@ -136,12 +139,13 @@ int btshell_conn_cancel(void);
 int btshell_term_conn(uint16_t conn_handle, uint8_t reason);
 int btshell_wl_set(ble_addr_t *addrs, int addrs_count);
 int btshell_scan(uint8_t own_addr_type, int32_t duration_ms,
-                 const struct ble_gap_disc_params *disc_params);
+                 const struct ble_gap_disc_params *disc_params, void *cb_args);
 int btshell_ext_scan(uint8_t own_addr_type, uint16_t duration, uint16_t period,
                      uint8_t filter_duplicates, uint8_t filter_policy,
                      uint8_t limited,
                      const struct ble_gap_ext_disc_params *uncoded_params,
-                     const struct ble_gap_ext_disc_params *coded_params);
+                     const struct ble_gap_ext_disc_params *coded_params,
+                     void *cb_args);
 int btshell_scan_cancel(void);
 int btshell_update_conn(uint16_t conn_handle,
                          struct ble_gap_upd_params *params);
@@ -157,7 +161,7 @@ int btshell_sec_restart(uint16_t conn_handle, uint8_t *ltk, uint16_t ediv,
 int btshell_tx_start(uint16_t handle, uint16_t len, uint16_t rate,
                      uint16_t num);
 int btshell_rssi(uint16_t conn_handle, int8_t *out_rssi);
-int btshell_l2cap_create_srv(uint16_t psm);
+int btshell_l2cap_create_srv(uint16_t psm, int accept_response);
 int btshell_l2cap_connect(uint16_t conn, uint16_t psm);
 int btshell_l2cap_disconnect(uint16_t conn, uint16_t idx);
 int btshell_l2cap_send(uint16_t conn, uint16_t idx, uint16_t bytes);

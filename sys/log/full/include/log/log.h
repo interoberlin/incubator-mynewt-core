@@ -19,11 +19,9 @@
 #ifndef __SYS_LOG_FULL_H__
 #define __SYS_LOG_FULL_H__
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "log/ignore.h"
 #include "cbmem/cbmem.h"
-
-#include <os/queue.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,12 +32,14 @@ struct log_info {
     uint32_t li_next_index;
     uint8_t li_version;
 };
+#define LOG_VERSION_V3  3
 #define LOG_VERSION_V2  2
 #define LOG_VERSION_V1  1
 
 extern struct log_info g_log_info;
 
 struct log;
+struct log_entry_hdr;
 
 /**
  * Used for walks and reads; indicates part of log to access.
@@ -66,15 +66,14 @@ typedef int (*log_walk_func_t)(struct log *, struct log_offset *log_offset,
 
 typedef int (*lh_read_func_t)(struct log *, void *dptr, void *buf,
         uint16_t offset, uint16_t len);
+typedef int (*lh_read_mbuf_func_t)(struct log *, void *dptr, struct os_mbuf *om,
+                                   uint16_t offset, uint16_t len);
 typedef int (*lh_append_func_t)(struct log *, void *buf, int len);
+typedef int (*lh_append_mbuf_func_t)(struct log *, struct os_mbuf *om);
 typedef int (*lh_walk_func_t)(struct log *,
         log_walk_func_t walk_func, struct log_offset *log_offset);
 typedef int (*lh_flush_func_t)(struct log *);
-/*
- * This function pointer points to a function that restores the numebr
- * of entries that are specified while erasing
- */
-typedef int (*lh_rtr_erase_func_t)(struct log *, void *arg);
+typedef int (*lh_registered_func_t)(struct log *);
 
 #define LOG_TYPE_STREAM  (0)
 #define LOG_TYPE_MEMORY  (1)
@@ -83,18 +82,34 @@ typedef int (*lh_rtr_erase_func_t)(struct log *, void *arg);
 struct log_handler {
     int log_type;
     lh_read_func_t log_read;
+    lh_read_mbuf_func_t log_read_mbuf;
     lh_append_func_t log_append;
+    lh_append_mbuf_func_t log_append_mbuf;
     lh_walk_func_t log_walk;
     lh_flush_func_t log_flush;
-    lh_rtr_erase_func_t log_rtr_erase;
+    /* Functions called only internally (no API for apps) */
+    lh_registered_func_t log_registered;
 };
 
+#if MYNEWT_VAL(LOG_VERSION) == 2
 struct log_entry_hdr {
     int64_t ue_ts;
     uint32_t ue_index;
     uint8_t ue_module;
     uint8_t ue_level;
 }__attribute__((__packed__));
+#elif MYNEWT_VAL(LOG_VERSION) == 3
+struct log_entry_hdr {
+    int64_t ue_ts;
+    uint32_t ue_index;
+    uint8_t ue_module;
+    uint8_t ue_level;
+    uint8_t ue_etype;
+}__attribute__((__packed__));
+#else
+#error "Unsupported log version"
+#endif
+
 #define LOG_ENTRY_HDR_SIZE (sizeof(struct log_entry_hdr))
 
 #define LOG_LEVEL_DEBUG    (0)
@@ -126,17 +141,13 @@ struct log_entry_hdr {
 #define LOG_MODULE_PERUSER          (64)
 #define LOG_MODULE_MAX              (255)
 
-#define LOG_MODULE_STR(module) \
-    (LOG_MODULE_DEFAULT     == module ? "DEFAULT"     :\
-    (LOG_MODULE_OS          == module ? "OS"          :\
-    (LOG_MODULE_NEWTMGR     == module ? "NEWTMGR"     :\
-    (LOG_MODULE_NIMBLE_CTLR == module ? "NIMBLE_CTLR" :\
-    (LOG_MODULE_NIMBLE_HOST == module ? "NIMBLE_HOST" :\
-    (LOG_MODULE_NFFS        == module ? "NFFS"        :\
-    (LOG_MODULE_REBOOT      == module ? "REBOOT"      :\
-    (LOG_MODULE_IOTIVITY    == module ? "IOTIVITY"    :\
-    (LOG_MODULE_TEST        == module ? "TEST"        :\
-     "UNKNOWN")))))))))
+#define LOG_MODULE_STR(module)      log_module_get_name(module)
+
+#define LOG_ETYPE_STRING         (0)
+#if MYNEWT_VAL(LOG_VERSION) > 2
+#define LOG_ETYPE_CBOR           (1)
+#define LOG_ETYPE_BINARY         (2)
+#endif
 
 /* Logging medium */
 #define LOG_STORE_CONSOLE    1
@@ -191,7 +202,7 @@ struct log_entry_hdr {
 
 struct log {
     char *l_name;
-    struct log_handler *l_log;
+    const struct log_handler *l_log;
     void *l_arg;
     STAILQ_ENTRY(log) l_next;
     uint8_t l_level;
@@ -209,19 +220,65 @@ struct log {
 void log_init(void);
 struct log *log_list_get_next(struct log *);
 
+/*
+ * Register per-user log module
+ *
+ * This function associates user log module with given name.
+ *
+ * If \p id is non-zero, module is registered with selected id.
+ * If \p id is zero, module id is selected automatically (first available).
+ *
+ * Up to `LOG_MAX_USER_MODULES` (syscfg) modules can be registered with ids
+ * starting from `LOG_MODULE_PERUSER`.
+ *
+ * @param id    Selected module id
+ * @param name  Module name
+ *
+ * @return  module id on success, 0 on failure
+ */
+uint8_t log_module_register(uint8_t id, const char *name);
+
+/*
+ * Get name for module id
+ *
+ * This works for both system and user registered modules.
+ *
+ * @param id  Module id
+ *
+ * @return  module name or NULL if not a valid module
+ */
+const char *log_module_get_name(uint8_t id);
+
 /* Log functions, manipulate a single log */
 int log_register(char *name, struct log *log, const struct log_handler *,
                  void *arg, uint8_t level);
-int log_append(struct log *, uint16_t, uint16_t, void *, uint16_t);
+int log_append_typed(struct log *, uint8_t, uint8_t, uint8_t, void *, uint16_t);
+int log_append_mbuf_typed(struct log *, uint8_t, uint8_t, uint8_t,
+                          struct os_mbuf *);
+
+static inline int
+log_append(struct log *log, uint8_t module, uint8_t level, void *data,
+           uint16_t len)
+{
+    return log_append_typed(log, module, level, LOG_ETYPE_STRING, data, len);
+}
+
+static inline int
+log_append_mbuf(struct log *log, uint8_t module, uint8_t level,
+                struct os_mbuf *om)
+{
+    return log_append_mbuf_typed(log, module, level, LOG_ETYPE_STRING, om);
+}
 
 #define LOG_PRINTF_MAX_ENTRY_LEN (128)
 void log_printf(struct log *log, uint16_t, uint16_t, char *, ...);
 int log_read(struct log *log, void *dptr, void *buf, uint16_t off,
         uint16_t len);
+int log_read_mbuf(struct log *log, void *dptr, struct os_mbuf *om, uint16_t off,
+                  uint16_t len);
 int log_walk(struct log *log, log_walk_func_t walk_func,
         struct log_offset *log_offset);
 int log_flush(struct log *log);
-int log_rtr_erase(struct log *log, void *arg);
 
 /* Handler exports */
 #if MYNEWT_VAL(LOG_CONSOLE)
@@ -230,6 +287,7 @@ extern const struct log_handler log_console_handler;
 extern const struct log_handler log_cbmem_handler;
 #if MYNEWT_VAL(LOG_FCB)
 extern const struct log_handler log_fcb_handler;
+extern const struct log_handler log_fcb_slot1_handler;
 #endif
 
 /* Private */

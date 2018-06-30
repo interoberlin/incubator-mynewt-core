@@ -18,8 +18,8 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include "os/mynewt.h"
 #include "testutil/testutil.h"
-#include "os/os.h"
 #include "os_test_priv.h"
 
 #if OS_CFG_ALIGNMENT == OS_CFG_ALIGN_4
@@ -82,8 +82,12 @@ os_mempool_test_init(void *arg)
 }
 
 TEST_CASE_DECL(os_mempool_test_case)
+TEST_CASE_DECL(os_mempool_test_ext_basic)
+TEST_CASE_DECL(os_mempool_test_ext_nested)
 
 TEST_SUITE(os_mempool_test_suite)
 {
     os_mempool_test_case();
+    os_mempool_test_ext_basic();
+    os_mempool_test_ext_nested();
 }

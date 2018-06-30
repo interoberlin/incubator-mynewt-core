@@ -19,12 +19,11 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include "os/mynewt.h"
 #include "mcu/hal_apollo2.h"
-#include "defs/error.h"
 #include "hal/hal_uart.h"
-#include "bsp/cmsis_nvic.h"
+#include "mcu/cmsis_nvic.h"
 #include "bsp/bsp.h"
-#include "os/os_trace_api.h"
 
 #include "am_mcu_apollo.h"
 
@@ -192,7 +191,7 @@ apollo2_uart_irqh_x(int num)
     int data;
     int rc;
 
-    os_trace_enter_isr();
+    os_trace_isr_enter();
 
     u = &uarts[num];
 
@@ -233,7 +232,7 @@ apollo2_uart_irqh_x(int num)
         }
     }
 
-    os_trace_exit_isr();
+    os_trace_isr_exit();
 }
 
 #if MYNEWT_VAL(UART_0)

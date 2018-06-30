@@ -24,7 +24,6 @@
 #include "stm32f4xx_hal_dma.h"
 #include "stm32f4xx_hal_gpio.h"
 #include "stm32f4xx_hal_i2c.h"
-#include "stm32f4xx_hal_spi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,7 +47,7 @@ extern "C" {
 int hal_gpio_init_stm(int pin, GPIO_InitTypeDef *cfg);
 int hal_gpio_deinit_stm(int pin, GPIO_InitTypeDef *cfg);
 
-struct stm32f4_hal_i2c_cfg {
+struct stm32_hal_i2c_cfg {
     I2C_TypeDef *hic_i2c;
     volatile uint32_t *hic_rcc_reg;		/* RCC register to modify */
     uint32_t hic_rcc_dev;			/* RCC device ID */
@@ -57,14 +56,6 @@ struct stm32f4_hal_i2c_cfg {
     uint8_t hic_pin_af;
     uint8_t hic_10bit;
     uint32_t hic_speed;
-};
-
-struct stm32f4_hal_spi_cfg {
-    int ss_pin;					/* for slave mode */
-    int sck_pin;
-    int miso_pin;
-    int mosi_pin;
-    int irq_prio;
 };
 
 #ifdef __cplusplus

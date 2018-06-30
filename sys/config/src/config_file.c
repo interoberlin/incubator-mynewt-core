@@ -17,14 +17,13 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 
 #if MYNEWT_VAL(CONFIG_NFFS)
 
 #include <string.h>
 #include <assert.h>
 
-#include <os/os.h>
 #include <fs/fs.h>
 
 #include "config/config.h"
@@ -196,6 +195,9 @@ conf_file_compress(struct conf_file *cf)
         }
         rc = conf_line_parse(buf1, &name1, &val1);
         if (rc) {
+            continue;
+        }
+        if (!val1) {
             continue;
         }
         loc2 = loc1;

@@ -19,7 +19,7 @@
 #ifndef __UTIL_CBMEM_H__ 
 #define __UTIL_CBMEM_H__
 
-#include <os/os.h>
+#include "os/mynewt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,11 +58,14 @@ int cbmem_lock_acquire(struct cbmem *cbmem);
 int cbmem_lock_release(struct cbmem *cbmem);
 int cbmem_init(struct cbmem *cbmem, void *buf, uint32_t buf_len);
 int cbmem_append(struct cbmem *cbmem, void *data, uint16_t len);
+int cbmem_append_mbuf(struct cbmem *cbmem, struct os_mbuf *om);
 void cbmem_iter_start(struct cbmem *cbmem, struct cbmem_iter *iter);
 struct cbmem_entry_hdr *cbmem_iter_next(struct cbmem *cbmem, 
         struct cbmem_iter *iter);
 int cbmem_read(struct cbmem *cbmem, struct cbmem_entry_hdr *hdr, void *buf, 
         uint16_t off, uint16_t len);
+int cbmem_read_mbuf(struct cbmem *cbmem, struct cbmem_entry_hdr *hdr,
+                    struct os_mbuf *om, uint16_t off, uint16_t len);
 int cbmem_walk(struct cbmem *cbmem, cbmem_walk_func_t walk_func, void *arg);
 
 int cbmem_flush(struct cbmem *);

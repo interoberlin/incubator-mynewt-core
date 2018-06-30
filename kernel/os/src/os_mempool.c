@@ -17,18 +17,14 @@
  * under the License.
  */
 
-#include "os/os.h"
-
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
-
-/**
- * @addtogroup OSKernel
- * @{
- *   @defgroup OSMempool Memory Pools
- *   @{
- */
+#include "syscfg/syscfg.h"
+#if !MYNEWT_VAL(OS_SYSVIEW_TRACE_MEMPOOL)
+#define OS_TRACE_DISABLE_FILE_API
+#endif
+#include "os/mynewt.h"
 
 #define OS_MEM_TRUE_BLOCK_SIZE(bsize)   OS_ALIGN(bsize, OS_ALIGNMENT)
 #define OS_MEMPOOL_TRUE_BLOCK_SIZE(mp) OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size)
@@ -68,21 +64,8 @@ os_mempool_poison_check(void *start, int sz)
 #define os_mempool_poison_check(start, sz)
 #endif
 
-/**
- * os mempool init
- *
- * Initialize a memory pool.
- *
- * @param mp            Pointer to a pointer to a mempool
- * @param blocks        The number of blocks in the pool
- * @param blocks_size   The size of the block, in bytes.
- * @param membuf        Pointer to memory to contain blocks.
- * @param name          Name of the pool.
- *
- * @return os_error_t
- */
 os_error_t
-os_mempool_init(struct os_mempool *mp, int blocks, int block_size,
+os_mempool_init(struct os_mempool *mp, uint16_t blocks, uint32_t block_size,
                 void *membuf, char *name)
 {
     int true_block_size;
@@ -90,7 +73,7 @@ os_mempool_init(struct os_mempool *mp, int blocks, int block_size,
     struct os_memblock *block_ptr;
 
     /* Check for valid parameters */
-    if (!mp || (blocks < 0) || (block_size <= sizeof(struct os_memblock))) {
+    if (!mp || (blocks < 0) || (block_size <= 0)) {
         return OS_INVALID_PARM;
     }
 
@@ -112,6 +95,7 @@ os_mempool_init(struct os_mempool *mp, int blocks, int block_size,
     mp->mp_block_size = block_size;
     mp->mp_num_free = blocks;
     mp->mp_min_free = blocks;
+    mp->mp_flags = 0;
     mp->mp_num_blocks = blocks;
     mp->mp_membuf_addr = (uint32_t)membuf;
     mp->name = name;
@@ -137,16 +121,63 @@ os_mempool_init(struct os_mempool *mp, int blocks, int block_size,
     return OS_OK;
 }
 
-/**
- * Performs an integrity check of the specified mempool.  This function
- * attempts to detect memory corruption in the specified memory pool.
- *
- * @param mp                    The mempool to check.
- *
- * @return                      true if the memory pool passes the integrity
- *                                  check;
- *                              false if the memory pool is corrupt.
- */
+os_error_t
+os_mempool_ext_init(struct os_mempool_ext *mpe, uint16_t blocks,
+                    uint32_t block_size, void *membuf, char *name)
+{
+    int rc;
+
+    rc = os_mempool_init(&mpe->mpe_mp, blocks, block_size, membuf, name);
+    if (rc != 0) {
+        return rc;
+    }
+
+    mpe->mpe_mp.mp_flags = OS_MEMPOOL_F_EXT;
+    mpe->mpe_put_cb = NULL;
+    mpe->mpe_put_arg = NULL;
+
+    return 0;
+}
+
+os_error_t
+os_mempool_clear(struct os_mempool *mp)
+{
+    struct os_memblock *block_ptr;
+    int true_block_size;
+    uint8_t *block_addr;
+    uint16_t blocks;
+
+    if (!mp) {
+        return OS_INVALID_PARM;
+    }
+
+    true_block_size = OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size);
+
+    /* cleanup the memory pool structure */
+    mp->mp_num_free = mp->mp_num_blocks;
+    mp->mp_min_free = mp->mp_num_blocks;
+    os_mempool_poison((void *)mp->mp_membuf_addr, true_block_size);
+    SLIST_FIRST(mp) = (void *)mp->mp_membuf_addr;
+
+    /* Chain the memory blocks to the free list */
+    block_addr = (uint8_t *)mp->mp_membuf_addr;
+    block_ptr = (struct os_memblock *)block_addr;
+    blocks = mp->mp_num_blocks;
+
+    while (blocks > 1) {
+        block_addr += true_block_size;
+        os_mempool_poison(block_addr, true_block_size);
+        SLIST_NEXT(block_ptr, mb_next) = (struct os_memblock *)block_addr;
+        block_ptr = (struct os_memblock *)block_addr;
+        --blocks;
+    }
+
+    /* Last one in the list should be NULL */
+    SLIST_NEXT(block_ptr, mb_next) = NULL;
+
+    return OS_OK;
+}
+
 bool
 os_mempool_is_sane(const struct os_mempool *mp)
 {
@@ -163,15 +194,6 @@ os_mempool_is_sane(const struct os_mempool *mp)
     return true;
 }
 
-/**
- * Checks if a memory block was allocated from the specified mempool.
- *
- * @param mp                    The mempool to check as parent.
- * @param block_addr            The memory block to check as child.
- *
- * @return                      0 if the block does not belong to the mempool;
- *                              1 if the block does belong to the mempool.
- */
 int
 os_memblock_from(const struct os_mempool *mp, const void *block_addr)
 {
@@ -199,20 +221,13 @@ os_memblock_from(const struct os_mempool *mp, const void *block_addr)
     return 1;
 }
 
-/**
- * os memblock get
- *
- * Get a memory block from a memory pool
- *
- * @param mp Pointer to the memory pool
- *
- * @return void* Pointer to block if available; NULL otherwise
- */
 void *
 os_memblock_get(struct os_mempool *mp)
 {
     os_sr_t sr;
     struct os_memblock *block;
+
+    os_trace_api_u32(OS_TRACE_ID_MEMBLOCK_GET, (uint32_t)mp);
 
     /* Check to make sure they passed in a memory pool (or something) */
     block = NULL;
@@ -222,8 +237,6 @@ os_memblock_get(struct os_mempool *mp)
         if (mp->mp_num_free) {
             /* Get a free block */
             block = SLIST_FIRST(mp);
-
-            os_mempool_poison_check(block, OS_MEMPOOL_TRUE_BLOCK_SIZE(mp));
 
             /* Set new free list head */
             SLIST_FIRST(mp) = SLIST_NEXT(block, mb_next);
@@ -235,44 +248,28 @@ os_memblock_get(struct os_mempool *mp)
             }
         }
         OS_EXIT_CRITICAL(sr);
+
+        if (block) {
+            os_mempool_poison_check(block, OS_MEMPOOL_TRUE_BLOCK_SIZE(mp));
+        }
     }
+
+    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uint32_t)block);
 
     return (void *)block;
 }
 
-/**
- * os memblock put
- *
- * Puts the memory block back into the pool
- *
- * @param mp Pointer to memory pool
- * @param block_addr Pointer to memory block
- *
- * @return os_error_t
- */
 os_error_t
-os_memblock_put(struct os_mempool *mp, void *block_addr)
+os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
 {
     os_sr_t sr;
     struct os_memblock *block;
 
-    /* Make sure parameters are valid */
-    if ((mp == NULL) || (block_addr == NULL)) {
-        return OS_INVALID_PARM;
-    }
+    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uint32_t)mp,
+                       (uint32_t)block_addr);
 
-#if MYNEWT_VAL(OS_MEMPOOL_CHECK)
-    /* Check that the block we are freeing is a valid block! */
-    assert(os_memblock_from(mp, block_addr));
-
-    /*
-     * Check for duplicate free.
-     */
-    SLIST_FOREACH(block, mp, mb_next) {
-        assert(block != (struct os_memblock *)block_addr);
-    }
-#endif
     os_mempool_poison(block_addr, OS_MEMPOOL_TRUE_BLOCK_SIZE(mp));
+
     block = (struct os_memblock *)block_addr;
     OS_ENTER_CRITICAL(sr);
 
@@ -286,9 +283,59 @@ os_memblock_put(struct os_mempool *mp, void *block_addr)
 
     OS_EXIT_CRITICAL(sr);
 
+    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uint32_t)OS_OK);
+
     return OS_OK;
 }
 
+os_error_t
+os_memblock_put(struct os_mempool *mp, void *block_addr)
+{
+    struct os_mempool_ext *mpe;
+    os_error_t ret;
+#if MYNEWT_VAL(OS_MEMPOOL_CHECK)
+    struct os_memblock *block;
+#endif
+
+    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT, (uint32_t)mp,
+                       (uint32_t)block_addr);
+
+    /* Make sure parameters are valid */
+    if ((mp == NULL) || (block_addr == NULL)) {
+        ret = OS_INVALID_PARM;
+        goto done;
+    }
+
+#if MYNEWT_VAL(OS_MEMPOOL_CHECK)
+    /* Check that the block we are freeing is a valid block! */
+    assert(os_memblock_from(mp, block_addr));
+
+    /*
+     * Check for duplicate free.
+     */
+    SLIST_FOREACH(block, mp, mb_next) {
+        assert(block != (struct os_memblock *)block_addr);
+    }
+#endif
+
+    /* If this is an extended mempool with a put callback, call the callback
+     * instead of freeing the block directly.
+     */
+    if (mp->mp_flags & OS_MEMPOOL_F_EXT) {
+        mpe = (struct os_mempool_ext *)mp;
+        if (mpe->mpe_put_cb != NULL) {
+            ret = mpe->mpe_put_cb(mpe, block_addr, mpe->mpe_put_arg);
+            goto done;
+        }
+    }
+
+    /* No callback; free the block. */
+    ret = os_memblock_put_from_cb(mp, block_addr);
+
+done:
+    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_PUT, (uint32_t)ret);
+    return ret;
+}
 
 struct os_mempool *
 os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
@@ -315,7 +362,3 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
 }
 
 
-/**
- *   @} OSMempool
- * @} OSKernel
- */

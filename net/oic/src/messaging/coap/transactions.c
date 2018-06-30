@@ -30,18 +30,16 @@
  *
  * This file is part of the Contiki operating system.
  */
+
 #include <string.h>
 #include <stddef.h>
 
-#include <syscfg/syscfg.h>
-
-#include <os/os_callout.h>
-#include <os/os_mempool.h>
+#include "os/mynewt.h"
 
 #include "oic/port/mynewt/config.h"
 #include "oic/messaging/coap/transactions.h"
 #include "oic/messaging/coap/observe.h"
-#include "api/oc_buffer.h"
+#include "oic/oc_buffer.h"
 
 #ifdef OC_CLIENT
 #include "oic/oc_client_state.h"

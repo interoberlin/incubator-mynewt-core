@@ -49,6 +49,16 @@ syscfg.defs:
         description: 'RX pin for UART1'
         value:  -1
 
+    SPI_0_MASTER_PIN_SCK:
+        description: 'SCK pin for SPI_0_MASTER'
+        value:  25
+    SPI_0_MASTER_PIN_MOSI:
+        description: 'MOSI pin for SPI_0_MASTER'
+        value:  23
+    SPI_0_MASTER_PIN_MISO:
+        description: 'MISO pin for SPI_0_MASTER'
+        value:  24
+
     TIMER_0:
         description: 'NRF52 Timer 0'
         value:  1
@@ -85,6 +95,7 @@ syscfg.vals:
     SX1276_SPI_CS_PIN: 22
     XTAL_32768: 1
     BOOT_SERIAL_DETECT_PIN: 12
+    SX1276_HAS_ANT_SW: 1
 
 syscfg.vals.BLE_LP_CLOCK:
     OS_CPUTIME_FREQ: 32768

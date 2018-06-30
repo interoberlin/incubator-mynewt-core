@@ -21,9 +21,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "defs/error.h"
-#include "os/os.h"
-#include "sysinit/sysinit.h"
+#include "os/mynewt.h"
 #include "hal/hal_i2c.h"
 #include "sensor/sensor.h"
 #include "tcs34725/tcs34725.h"
@@ -99,7 +97,7 @@ tcs34725_write8(struct sensor_itf *itf, uint8_t reg, uint32_t value)
     rc = hal_i2c_master_write(itf->si_num, &data_struct,
                               OS_TICKS_PER_SEC / 10, 1);
     if (rc) {
-        TCS34725_ERR("Failed to write to 0x%02X:0x%02X with value 0x%02X\n",
+        TCS34725_ERR("Failed to write to 0x%02X:0x%02X with value 0x%02lX\n",
                        data_struct.address, reg, value);
         STATS_INC(g_tcs34725stats, errors);
     }
@@ -204,7 +202,7 @@ err:
 }
 
 /**
- * Writes a multiple bytes to the specified register
+ * Writes a multiple bytes to the specified register (MAX: 8 bytes)
  *
  * @param The sensor interface
  * @param The register address to write to
@@ -223,6 +221,11 @@ tcs34725_writelen(struct sensor_itf *itf, uint8_t reg, uint8_t *buffer, uint8_t 
         .len = 1,
         .buffer = payload
     };
+
+    if (len > (sizeof(payload) - 1)) {
+        rc = OS_EINVAL;
+        goto err;
+    }
 
     memcpy(&payload[1], buffer, len);
 
@@ -310,7 +313,7 @@ err:
 /**
  * Expects to be called back through os_dev_create().
  *
- * @param The device object associated with this accellerometer
+ * @param The device object associated with this color sensor
  * @param Argument passed to OS device init, unused
  *
  * @return 0 on success, non-zero error on failure.

@@ -13,6 +13,10 @@ The shell uses the OS default event queue for shell events and runs in
 the context of the main task. An application can, optionally, specify a
 dedicated event queue for the shell to use.
 
+.. contents::
+  :local:
+  :depth: 2
+
 The ``sys/shell`` package implements the shell. To use the shell you
 must:
 
@@ -105,7 +109,9 @@ There are two methods to register command handlers in Mynewt 1.1:
       this method. You can increase this value if your application and
       the packages it includes register more than the default value.
 
- ####Enabling Help Information for Shell Commands
+Enabling Help Information for Shell Commands
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
 
 The shell supports command help. A package that supports command help
 initializes the ``struct shell_cmd`` data structure with help text for
@@ -133,13 +139,17 @@ whether to print the current os ticks in the prompt. The
 ``SHELL_PROMPT_MODULE`` syscfg setting enables or disables this module.
 The module is disabled by default.
 
- #### Enabling Command Name Completion
+Enabling Command Name Completion
+^^^^^^^^^^^^^^^^^^^
+
 
 The shell supports command name completion. The ``SHELL_COMPLETION``
 syscfg setting enables or disables the feature. The feature is enabled
 by default.
 
- ### Processing Newtmgr Line Protocol Over Serial Transport
+Processing Newtmgr Line Protocol Over Serial Transport
+~~~~~~~~~~~~~~~
+
 
 The shell's second job is to handle packet framing, encoding, and
 decoding of newtmgr protocol messages that are sent over the console.
@@ -154,7 +164,7 @@ enabled over shell. The setting is enabled by default.
 Data Structures
 ---------------
 
- The ``struct shell_cmd`` data structure represents a shell command and
+The ``struct shell_cmd`` data structure represents a shell command and
 is used to register a command.
 
 .. code-block:: console
@@ -242,7 +252,7 @@ module.
 **Note**: A command handler registered via the ``shell_cmd_register()``
 function is automatically added to the ``compat`` module.
 
- The ``struct shell_param`` and ``struct shell_cmd_help`` data
+The ``struct shell_param`` and ``struct shell_cmd_help`` data
 structures hold help texts for a shell command.
 
 .. code:: c
@@ -366,3 +376,8 @@ The functions available in this OS feature are:
 | dule.html>`_ |                |
 | _          |                |
 +------------+----------------+
+
+API
+---
+
+.. doxygenfile:: sys/shell/include/shell/shell.h

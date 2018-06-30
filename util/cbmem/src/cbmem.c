@@ -17,11 +17,11 @@
  * under the License.
  */
 
-#include <os/os.h>
 #include <string.h>
-
+#include "os/mynewt.h"
 #include "cbmem/cbmem.h"
 
+typedef void (copy_data_func_t) (void *dst, void *data, uint16_t len);
 
 int
 cbmem_init(struct cbmem *cbmem, void *buf, uint32_t buf_len)
@@ -74,8 +74,9 @@ err:
 }
 
 
-int
-cbmem_append(struct cbmem *cbmem, void *data, uint16_t len)
+static int
+cbmem_append_internal(struct cbmem *cbmem, void *data, uint16_t len,
+                      copy_data_func_t *copy_func)
 {
     struct cbmem_entry_hdr *dst;
     uint8_t *start;
@@ -126,7 +127,7 @@ cbmem_append(struct cbmem *cbmem, void *data, uint16_t len)
     /* Copy the entry into the log
      */
     dst->ceh_len = len;
-    memcpy((uint8_t *) dst + sizeof(*dst), data, len);
+    copy_func((uint8_t *) dst + sizeof(*dst), data, len);
 
     cbmem->c_entry_end = dst;
     if (!cbmem->c_entry_start) {
@@ -141,6 +142,41 @@ cbmem_append(struct cbmem *cbmem, void *data, uint16_t len)
     return (0);
 err:
     return (-1);
+}
+
+static void
+copy_data_from_flat(void *dst, void *data, uint16_t len)
+{
+    memcpy(dst, data, len);
+}
+
+static void
+copy_data_from_mbuf(void *dst, void *data, uint16_t len)
+{
+    struct os_mbuf *om = data;
+
+    os_mbuf_copydata(om, 0, len, dst);
+}
+
+int
+cbmem_append(struct cbmem *cbmem, void *data, uint16_t len)
+{
+    return cbmem_append_internal(cbmem, data, len, copy_data_from_flat);
+}
+
+int
+cbmem_append_mbuf(struct cbmem *cbmem, struct os_mbuf *om)
+{
+    struct os_mbuf *om_tmp;
+    uint16_t len = 0;
+
+    om_tmp = om;
+    while (om_tmp) {
+        len += om_tmp->om_len;
+        om_tmp = SLIST_NEXT(om_tmp, om_next);
+    }
+
+    return cbmem_append_internal(cbmem, om, len, copy_data_from_mbuf);
 }
 
 void
@@ -239,6 +275,43 @@ cbmem_read(struct cbmem *cbmem, struct cbmem_entry_hdr *hdr, void *buf,
     return (len);
 err:
     return (-1);
+}
+
+int cbmem_read_mbuf(struct cbmem *cbmem, struct cbmem_entry_hdr *hdr,
+                    struct os_mbuf *om, uint16_t off, uint16_t len)
+{
+    int rc;
+
+    rc = cbmem_lock_acquire(cbmem);
+    if (rc != 0) {
+        goto err;
+    }
+
+    /* Only read the maximum number of bytes, if we exceed that,
+     * truncate the read.
+     */
+    if (off + len > hdr->ceh_len) {
+        len = hdr->ceh_len - off;
+    }
+
+    if (off > hdr->ceh_len) {
+        rc = -1;
+        cbmem_lock_release(cbmem);
+        goto err;
+    }
+
+    rc = os_mbuf_append(om, (uint8_t *) hdr + sizeof(*hdr) + off, len);
+    if (rc != 0) {
+        cbmem_lock_release(cbmem);
+        goto err;
+    }
+
+    cbmem_lock_release(cbmem);
+
+    return (len);
+err:
+    return (-1);
+
 }
 
 int

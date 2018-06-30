@@ -1,13 +1,11 @@
-#########
 Scheduler
-#########
+=========
 
 Scheduler's job is to maintain the list of tasks and decide which one
 should be running next.
 
-***********
 Description
-***********
+-------------
 
 Task states can be *running*, *ready to run* or *sleeping*.
 
@@ -22,7 +20,7 @@ someone else to wake it up.
 
 Scheduler algorithm is simple: from among the tasks which are ready to
 run, pick the the one with highest priority (lowest numeric value in
-task's t\_prio field), and make its state *running*.
+task's :c:member:`t_prio` field), and make its state *running*.
 
 Tasks which are either *running* or *ready to run* are kept in linked
 list ``g_os_run_list``. This list is ordered by priority.
@@ -35,9 +33,9 @@ process is called context switch. During context switching the state of
 the CPU (e.g. registers) for the currently *running* task is stored and
 the new task is swapped in.
 
-***
 API
-***
+----
 
 .. doxygengroup:: OSSched
     :content-only:
+    :members:

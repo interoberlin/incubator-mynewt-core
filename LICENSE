@@ -260,21 +260,16 @@ This product bundles additional files from CMSIS-CORE, but these files are
 missing licensing information.  The BSD license was subsequently added to
 these files in later releases.  These files are:
     * hw/cmsis-core/src/cmsis_nvic.c
-    * hw/bsp/ada_feather_nrf52/include/bsp/cmsis_nvic.h
-    * hw/bsp/arduino_primo_nrf52/include/bsp/cmsis_nvic.h
-    * hw/bsp/bbc_microbit/include/bsp/cmsis_nvic.h
-    * hw/bsp/bmd200/include/bsp/cmsis_nvic.h
-    * hw/bsp/bmd300eval/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf51-arduino_101/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf51-blenano/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf51dk/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf51dk-16kbram/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf52840pdk/include/bsp/cmsis_nvic.h
-    * hw/bsp/nrf52dk/include/bsp/cmsis_nvic.h
-    * hw/bsp/nucleo-f401re/include/bsp/cmsis_nvic.h
-    * hw/bsp/olimex_stm32-e407_devboard/include/bsp/cmsis_nvic.h
-    * hw/bsp/rb-nano2/include/bsp/cmsis_nvic.h
-    * hw/bsp/stm32f4discovery/include/bsp/cmsis_nvic.h
+    * hw/mcu/ambiq/apollo2/include/mcu/cmsis_nvic.h
+    * hw/mcu/nordic/nrf51xxx/include/mcu/cmsis_nvic.h
+    * hw/mcu/nordic/nrf52xxx/include/mcu/cmsis_nvic.h
+    * hw/mcu/nxp/MK64F12/include/mcu/cmsis_nvic.h
+    * hw/mcu/nxp/mkw41z/include/mcu/cmsis_nvic.h
+    * hw/mcu/stm/stm32f1xx/include/mcu/cmsis_nvic.h
+    * hw/mcu/stm/stm32f3xx/include/mcu/cmsis_nvic.h
+    * hw/mcu/stm/stm32f4xx/include/mcu/cmsis_nvic.h
+    * hw/mcu/stm/stm32f7xx/include/mcu/cmsis_nvic.h
+    * hw/mcu/stm/stm32l1xx/include/mcu/cmsis_nvic.h
 
 This product bundles parts of STM32CubeF4 1.5, which is available under the
 "3-clause BSD" license.  Bundled files are:
@@ -296,32 +291,27 @@ This product bundles parts of STM32CubeF7, which is available under the
     * hw/bsp/stm32f767-nucleo/src/system_stm32f7xx.c
     * hw/bsp/stm32f767-nucleo/src/arch/cortex_m7/startup_stm32f767xx.s
 
-This product bundles parts of mbed, which is available under the
+This product bundles parts of STM32CubeF3, which is available under the
 "3-clause BSD" license.  Bundled files are:
-    * hw/mcu/nordic/nrf51xxx/include/mcu/cortex_m0.h
-    * hw/mcu/nordic/nrf52xxx/include/mcu/cortex_m4.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/compiler_abstraction.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf51.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52840.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf51_to_nrf52.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf51_to_nrf52840.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52_to_nrf52840.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf51_bitfields.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52_bitfields.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52840_bitfields.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52840_peripherals.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf51_deprecated.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf51.c
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf51.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf51422.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf51422.c
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf52.c
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf52.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf52840.c
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/toolchain/system_nrf52840.h
-    * hw/mcu/nordic/src/ext/nRF5_SDK_11.0.0_89a8197/components/device/nrf52_name_change.h
+    * hw/mcu/stm/stm32f3xx/src/ext
+    * hw/bsp/stm32f3discovery
+
+This product bundles parts of stm32l1xx, which is available under the
+"3-clause BSD" license.  Bundled files are:
+    * hw/bsp/stm32l152discovery/src/system_stm32l1xx.c
+    * hw/bsp/stm32l152discovery/include/bsp/stm32l1xx_hal_conf.h
+    * hw/bsp/stm32l152discovery/src/system_stm32l1xx.c
+    * hw/mcu/stm/stm32l1xx/src/ext/
+
+This product bundles parts of stm32f1xx, which is available under the
+"3-clause BSD" license.  Bundled files are:
+    * hw/bsp/olimex-p103/include/bsp/stm32f1xx_hal_conf.h
+    * hw/bsp/olimex-p103/src/system_stm32f1xx.c
+    * hw/mcu/stm/stm32f1xx/src/ext/
+
+This product bundles parts of nrfx, which is available under the
+"3-clause BSD" license.  For detalils see:
+    * hw/mcu/nordic/src/ext/nrfx/LICENSE
 
 This product bundles FATFS, which is available under a
 "1-clause BSD" style license.  Bundled files are:
@@ -448,3 +438,7 @@ This product bundles RobotSlab by Christian Robertson, which is available
 under the Apache License v2.0. Bundled files are:
     * docs/themes/mynewt/static/fonts/RobotoSlab-Bold.ttf
     * docs/themes/mynewt/static/fonts/RobotoSlab-Regular.ttf
+
+This product bundles part of embARC BSP SDK by Synopsys, which is available
+under the "3-clause BSD" license. Bundled files are:
+    * hw/mcu/arc/src/ext/sdk

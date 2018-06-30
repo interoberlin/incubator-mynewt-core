@@ -17,16 +17,12 @@
  * under the License.
  */
 
-#include "os/os.h"
 #include <assert.h>
-
-
-/**
- * @addtogroup OSKernel
- * @{
- *   @defgroup OSSem Semaphores
- *   @{
- */
+#include "syscfg/syscfg.h"
+#if !MYNEWT_VAL(OS_SYSVIEW_TRACE_SEM)
+#define OS_TRACE_DISABLE_FILE_API
+#endif
+#include "os/mynewt.h"
 
 /* XXX:
  * 1) Should I check to see if we are within an ISR for some of these?
@@ -34,42 +30,28 @@
  *    ISR when this was called?
  */
 
-/**
- * os sem initialize
- *
- * Initialize a semaphore
- *
- * @param sem Pointer to semaphore
- *        tokens: # of tokens the semaphore should contain initially.
- *
- * @return os_error_t
- *      OS_INVALID_PARM     Semaphore passed in was NULL.
- *      OS_OK               no error.
- */
 os_error_t
 os_sem_init(struct os_sem *sem, uint16_t tokens)
 {
+    os_error_t ret;
+
+    os_trace_api_u32x2(OS_TRACE_ID_SEM_INIT, (uint32_t)sem, (uint32_t)tokens);
+
     if (!sem) {
-        return OS_INVALID_PARM;
+        ret = OS_INVALID_PARM;
+        goto done;
     }
 
     sem->sem_tokens = tokens;
     SLIST_FIRST(&sem->sem_head) = NULL;
 
-    return OS_OK;
+    ret = OS_OK;
+
+done:
+    os_trace_api_ret_u32(OS_TRACE_ID_SEM_INIT, (uint32_t)ret);
+    return ret;
 }
 
-/**
- * os sem release
- *
- * Release a semaphore.
- *
- * @param sem Pointer to the semaphore to be released
- *
- * @return os_error_t
- *      OS_INVALID_PARM Semaphore passed in was NULL.
- *      OS_OK No error
- */
 os_error_t
 os_sem_release(struct os_sem *sem)
 {
@@ -77,15 +59,20 @@ os_sem_release(struct os_sem *sem)
     os_sr_t sr;
     struct os_task *current;
     struct os_task *rdy;
+    os_error_t ret;
+
+    os_trace_api_u32(OS_TRACE_ID_SEM_INIT, (uint32_t)sem);
 
     /* OS must be started to release semaphores */
     if (!g_os_started) {
-        return (OS_NOT_STARTED);
+        ret = OS_NOT_STARTED;
+        goto done;
     }
 
     /* Check for valid semaphore */
     if (!sem) {
-        return OS_INVALID_PARM;
+        ret = OS_INVALID_PARM;
+        goto done;
     }
 
     /* Get current task */
@@ -117,43 +104,35 @@ os_sem_release(struct os_sem *sem)
         os_sched(rdy);
     }
 
-    return OS_OK;
+    ret = OS_OK;
+
+done:
+    os_trace_api_ret_u32(OS_TRACE_ID_SEM_INIT, (uint32_t)ret);
+    return ret;
 }
 
-/**
- * os sem pend
- *
- * Pend (wait) for a semaphore.
- *
- * @param mu Pointer to semaphore.
- * @param timeout Timeout, in os ticks. A timeout of 0 means do
- *                not wait if not available. A timeout of
- *                0xFFFFFFFF means wait forever.
- *
- *
- * @return os_error_t
- *      OS_INVALID_PARM     Semaphore passed in was NULL.
- *      OS_TIMEOUT          Semaphore was owned by another task and timeout=0
- *      OS_OK               no error.
- */
 os_error_t
 os_sem_pend(struct os_sem *sem, uint32_t timeout)
 {
     os_sr_t sr;
-    os_error_t rc;
     int sched;
     struct os_task *current;
     struct os_task *entry;
     struct os_task *last;
+    os_error_t ret;
+
+    os_trace_api_u32x2(OS_TRACE_ID_SEM_PEND, (uint32_t)sem, (uint32_t)timeout);
 
     /* Check if OS is started */
     if (!g_os_started) {
-        return (OS_NOT_STARTED);
+        ret = OS_NOT_STARTED;
+        goto done;
     }
 
     /* Check for valid semaphore */
     if (!sem) {
-        return OS_INVALID_PARM;
+        ret = OS_INVALID_PARM;
+        goto done;
     }
 
     /* Assume we dont have to put task to sleep; get current task */
@@ -168,12 +147,12 @@ os_sem_pend(struct os_sem *sem, uint32_t timeout)
      */
     if (sem->sem_tokens != 0) {
         sem->sem_tokens--;
-        rc = OS_OK;
+        ret = OS_OK;
     } else if (timeout == 0) {
-        rc = OS_TIMEOUT;
+        ret = OS_TIMEOUT;
     } else {
         /* Silence gcc maybe-uninitialized warning. */
-        rc = OS_OK;
+        ret = OS_OK;
 
         /* Link current task to tasks waiting for semaphore */
         current->t_obj = sem;
@@ -209,17 +188,13 @@ os_sem_pend(struct os_sem *sem, uint32_t timeout)
             OS_ENTER_CRITICAL(sr);
             current->t_flags &= ~OS_TASK_FLAG_SEM_WAIT;
             OS_EXIT_CRITICAL(sr);
-            rc = OS_TIMEOUT;
+            ret = OS_TIMEOUT;
         } else {
-            rc = OS_OK;
+            ret = OS_OK;
         }
     }
 
-    return rc;
+done:
+    os_trace_api_ret_u32(OS_TRACE_ID_SEM_PEND, (uint32_t)ret);
+    return ret;
 }
-
-
-/**
- *   @} OSSched
- * @} OSKernel
- */
