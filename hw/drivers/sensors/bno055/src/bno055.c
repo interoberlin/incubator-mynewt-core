@@ -21,9 +21,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "defs/error.h"
-#include "os/os.h"
-#include "sysinit/sysinit.h"
+#include "os/mynewt.h"
 #include "hal/hal_i2c.h"
 #include "sensor/sensor.h"
 #include "sensor/accel.h"
@@ -98,7 +96,7 @@ bno055_write8(struct sensor_itf *itf, uint8_t reg, uint8_t value)
 }
 
 /**
- * Writes a multiple bytes to the specified register
+ * Writes a multiple bytes to the specified register  (MAX: 22 bytes)
  *
  * @param The Sesnsor interface
  * @param The register address to write to
@@ -120,6 +118,11 @@ bno055_writelen(struct sensor_itf *itf, uint8_t reg, uint8_t *buffer,
         .len = 1,
         .buffer = payload
     };
+
+    if (len > (sizeof(payload) - 1)) {
+        rc = OS_EINVAL;
+        goto err;
+    }
 
     memcpy(&payload[1], buffer, len);
 
@@ -425,7 +428,7 @@ bno055_default_cfg(struct bno055_cfg *cfg)
 /**
  * Expects to be called back through os_dev_create().
  *
- * @param The device object associated with this accellerometer
+ * @param The device object associated with this accelerometer
  * @param Argument passed to OS device init, unused
  *
  * @return 0 on success, non-zero error on failure.
@@ -886,7 +889,7 @@ bno055_find_reg(sensor_type_t type, uint8_t *reg)
             *reg = BNO055_GRAVITY_DATA_X_LSB_ADDR;
             break;
         default:
-            BNO055_ERR("Not supported sensor type: %d\n", type);
+            BNO055_ERR("Not supported sensor type: %d\n", (int)type);
             rc = SYS_EINVAL;
             break;
     }

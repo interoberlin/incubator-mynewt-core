@@ -18,11 +18,7 @@
 #include <stddef.h>
 #include <strings.h>
 
-#include <syscfg/syscfg.h>
-
-#include <os/os_callout.h>
-#include <os/os_mempool.h>
-#include <os/queue.h>
+#include "os/mynewt.h"
 
 #include "oic/port/mynewt/config.h"
 
@@ -34,11 +30,12 @@
 #include "port/oc_clock.h"
 #include "port/mynewt/adaptor.h"
 
-#include "api/oc_buffer.h"
+#include "oic/oc_buffer.h"
 #include "oic/oc_core_res.h"
 #include "oic/oc_discovery.h"
 #include "oic/oc_ri.h"
 #include "oic/oc_uuid.h"
+#include "oic/oc_ri_const.h"
 #include "api/oc_priv.h"
 
 #ifdef OC_SECURITY
@@ -227,8 +224,6 @@ oc_ri_mem_init(void)
 void
 oc_ri_init(void)
 {
-    oc_random_init(0); // Fix: allow user to seed RNG.
-
 #ifdef OC_CLIENT
     SLIST_INIT(&oc_client_cbs);
 #endif
@@ -375,7 +370,8 @@ does_interface_support_method(oc_resource_t *resource,
  *                              false if the security requirements are not met.
  */
 static bool
-oc_ri_check_trans_security(const oc_endpoint_t *oe, const oc_resource_t *res)
+oc_ri_check_trans_security(const oc_endpoint_t *oe,
+                           const oc_resource_t *res)
 {
 #if MYNEWT_VAL(OC_TRANS_SECURITY)
   oc_resource_properties_t res_sec_flags;
@@ -806,6 +802,7 @@ oc_ri_invoke_client_cb(struct coap_packet_rx *rsp, oc_endpoint_t *endpoint)
                 }
             } else {
                 client_response.packet = rsp;
+                client_response.origin = endpoint;
                 handler = (oc_response_handler_t)cb->handler;
                 handler(&client_response);
             }

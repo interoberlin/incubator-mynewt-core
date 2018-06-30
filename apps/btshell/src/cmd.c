@@ -17,12 +17,11 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
-
 #include <assert.h>
 #include <inttypes.h>
 #include <errno.h>
 #include <string.h>
+#include "os/mynewt.h"
 #include "bsp/bsp.h"
 
 #include "nimble/ble.h"
@@ -45,17 +44,6 @@
 #include "cmd_l2cap.h"
 
 #define BTSHELL_MODULE "btshell"
-
-#if MYNEWT_VAL(BLE_EXT_ADV)
-
-#define EXT_ADV_POOL_SIZE (MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) + \
-                            sizeof(struct os_mbuf) + sizeof(struct os_mbuf_pkthdr))
-
-/* 1 mbuf is enough for configuring adv data */
-static os_membuf_t ext_adv_mem[OS_MEMPOOL_SIZE(1, EXT_ADV_POOL_SIZE)];
-static struct os_mempool ext_adv_pool;
-static struct os_mbuf_pool ext_adv_mbuf_pool;
-#endif
 
 int
 cmd_parse_conn_start_end(uint16_t *out_conn, uint16_t *out_start,
@@ -271,12 +259,6 @@ cmd_advertise_configure(int argc, char **argv)
     params.sid = parse_arg_uint8_dflt("sid", 0, &rc);
     if (rc != 0) {
         console_printf("invalid 'sid' parameter\n");
-        return rc;
-    }
-
-    params.high_duty_directed = parse_arg_uint8_dflt("high_duty", 0, &rc);
-    if (rc != 0) {
-        console_printf("invalid 'high_duty' parameter\n");
         return rc;
     }
 
@@ -1083,6 +1065,54 @@ static const struct shell_cmd_help disconnect_help = {
 #endif
 
 /*****************************************************************************
+ * $set-scan-opts                                                            *
+ *****************************************************************************/
+
+static struct btshell_scan_opts g_scan_opts = {
+        .limit = UINT16_MAX,
+        .ignore_legacy = 0,
+};
+
+static int
+cmd_set_scan_opts(int argc, char **argv)
+{
+    int rc;
+
+    rc = parse_arg_all(argc - 1, argv + 1);
+    if (rc != 0) {
+        return rc;
+    }
+
+    g_scan_opts.limit = parse_arg_uint16_dflt("decode_limit", UINT16_MAX, &rc);
+    if (rc != 0) {
+        console_printf("invalid 'decode_limit' parameter\n");
+        return rc;
+    }
+
+    g_scan_opts.ignore_legacy = parse_arg_bool_dflt("ignore_legacy", 0, &rc);
+    if (rc != 0) {
+        console_printf("invalid 'ignore_legacy' parameter\n");
+        return rc;
+    }
+
+    return rc;
+}
+
+#if MYNEWT_VAL(SHELL_CMD_HELP)
+static const struct shell_param set_scan_opts_params[] = {
+    {"decode_limit", "usage: =[0-UINT16_MAX], default: UINT16_MAX"},
+    {"ignore_legacy", "usage: =[0-1], default: 0"},
+    {NULL, NULL}
+};
+
+static const struct shell_cmd_help set_scan_opts_help = {
+    .summary = "set scan options",
+    .usage = NULL,
+    .params = set_scan_opts_params,
+};
+#endif
+
+/*****************************************************************************
  * $scan                                                                     *
  *****************************************************************************/
 
@@ -1101,6 +1131,8 @@ static struct kv_pair cmd_scan_ext_types[] = {
     { "both",       0x03 },
     { NULL }
 };
+
+static struct btshell_scan_opts g_scan_opts;
 
 static int
 cmd_scan(int argc, char **argv)
@@ -1187,11 +1219,13 @@ cmd_scan(int argc, char **argv)
     }
 
     if (extended == 0) {
-        rc = btshell_scan(own_addr_type, duration_ms, &params);
+        rc = btshell_scan(own_addr_type, duration_ms, &params, &g_scan_opts);
         if (rc != 0) {
             console_printf("error scanning; rc=%d\n", rc);
             return rc;
         }
+
+        return 0;
     }
 
     /* Copy above parameters to uncoded params */
@@ -1233,17 +1267,20 @@ cmd_scan(int argc, char **argv)
     case 0x01:
         rc = btshell_ext_scan(own_addr_type, duration, period,
                               params.filter_duplicates, params.filter_policy,
-                              params.limited, &uncoded, NULL);
+                              params.limited, &uncoded, NULL,
+                              &g_scan_opts);
         break;
     case 0x02:
         rc = btshell_ext_scan(own_addr_type, duration, period,
                               params.filter_duplicates, params.filter_policy,
-                              params.limited, NULL, &coded);
+                              params.limited, NULL, &coded,
+                              &g_scan_opts);
         break;
     case 0x03:
         rc = btshell_ext_scan(own_addr_type, duration, period,
                               params.filter_duplicates, params.filter_policy,
-                              params.limited, &uncoded, &coded);
+                              params.limited, &uncoded, &coded,
+                              &g_scan_opts);
         break;
     default:
         rc = -1;
@@ -1312,6 +1349,7 @@ cmd_set_addr(void)
     }
 
     switch (addr_type) {
+#if MYNEWT_VAL(BLE_DEVICE)
     case BLE_ADDR_PUBLIC:
         /* We shouldn't be writing to the controller's address (g_dev_addr).
          * There is no standard way to set the local public address, so this is
@@ -1320,6 +1358,7 @@ cmd_set_addr(void)
         memcpy(g_dev_addr, addr, 6);
         ble_hs_id_set_pub(g_dev_addr);
         break;
+#endif
 
     case BLE_ADDR_RANDOM:
         rc = ble_hs_id_set_rnd(addr);
@@ -1415,6 +1454,20 @@ static const struct shell_cmd_help set_help = {
 #define CMD_ADV_DATA_URI_MAX_LEN                BLE_HS_ADV_MAX_FIELD_SZ
 #define CMD_ADV_DATA_MFG_DATA_MAX_LEN           BLE_HS_ADV_MAX_FIELD_SZ
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+static void
+update_pattern(uint8_t *buf, int counter)
+{
+    int i;
+
+    for (i = 0; i < 10; i += 2) {
+        counter += 2;
+        buf[i] = (counter / 1000) << 4 | (counter / 100 % 10);
+        buf[i + 1] = (counter / 10 % 10) << 4 | (counter % 10);
+    }
+}
+#endif
+
 static int
 cmd_set_adv_data_or_scan_rsp(int argc, char **argv, bool scan_rsp)
 {
@@ -1452,6 +1505,9 @@ cmd_set_adv_data_or_scan_rsp(int argc, char **argv, bool scan_rsp)
     int rc;
 #if MYNEWT_VAL(BLE_EXT_ADV)
     uint8_t instance;
+    uint8_t extra_data[10];
+    uint16_t counter;
+    uint16_t extra_data_len;
     struct os_mbuf *adv_data;
 #endif
 
@@ -1695,7 +1751,9 @@ cmd_set_adv_data_or_scan_rsp(int argc, char **argv, bool scan_rsp)
                                             eddystone_url_suffix);
     } else {
 #if MYNEWT_VAL(BLE_EXT_ADV)
-        adv_data = os_mbuf_get_pkthdr(&ext_adv_mbuf_pool, 0);
+        /* Default to legacy PDUs size, mbuf chain will be increased if needed
+         */
+        adv_data = os_msys_get_pkthdr(BLE_HCI_MAX_ADV_DATA_LEN, 0);
         if (!adv_data) {
             rc = ENOMEM;
             goto done;
@@ -1706,13 +1764,26 @@ cmd_set_adv_data_or_scan_rsp(int argc, char **argv, bool scan_rsp)
             goto done;
         }
 
+        /* Append some extra data, if requested */
+        extra_data_len = parse_arg_uint16("extra_data_len", &rc);
+        if (rc == 0) {
+            counter = 0;
+            extra_data_len = min(extra_data_len, 1650);
+            while (counter < extra_data_len) {
+                update_pattern(extra_data, counter);
+
+                os_mbuf_append(adv_data, extra_data,
+                               min(extra_data_len - counter, 10));
+
+                counter += 10;
+            }
+        }
+
         if (scan_rsp) {
             rc = ble_gap_ext_adv_rsp_set_data(instance, adv_data);
         } else {
             rc = ble_gap_ext_adv_set_data(instance, adv_data);
         }
-
-        os_mbuf_free_chain(adv_data);
 #else
         if (scan_rsp) {
             rc = ble_gap_adv_rsp_set_fields(&adv_fields);
@@ -1744,6 +1815,7 @@ cmd_set_scan_rsp(int argc, char **argv)
 
 #if MYNEWT_VAL(SHELL_CMD_HELP)
 static const struct shell_param set_adv_data_params[] = {
+    {"instance", "default: 0"},
     {"flags", "usage: =[0-UINT8_MAX]"},
     {"uuid16", "usage: =[UINT16]"},
     {"uuid16_is_complete", "usage: =[0-1], default=0"},
@@ -1763,6 +1835,9 @@ static const struct shell_param set_adv_data_params[] = {
     {"uri", "usage: =[XX:XX...]"},
     {"mfg_data", "usage: =[XX:XX...]"},
     {"eddystone_url", "usage: =[string]"},
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    {"extra_data_len", "usage: =[UINT16]"},
+#endif
     {NULL, NULL}
 };
 
@@ -2080,7 +2155,7 @@ cmd_conn_datalen(int argc, char **argv)
 
 #if MYNEWT_VAL(SHELL_CMD_HELP)
 static const struct shell_param conn_datalen_params[] = {
-    {"conn", "conn_datalenion handle, usage: =<UINT16>"},
+    {"conn", "conn_datalen handle, usage: =<UINT16>"},
     {"octets", "usage: =<UINT16>"},
     {"time", "usage: =<UINT16>"},
     {NULL, NULL}
@@ -3216,6 +3291,11 @@ static const struct shell_cmd_help l2cap_update_help = {
 
 static const struct shell_param l2cap_create_server_params[] = {
     {"psm", "usage: =<UINT16>"},
+    {"error", "usage: used for PTS testing:"},
+    {"", "0 - always accept"},
+    {"", "1 - reject with insufficient authentication"},
+    {"", "2 - reject with insufficient authorization"},
+    {"", "3 - reject with insufficient key size"},
     {NULL, NULL}
 };
 
@@ -3377,6 +3457,13 @@ static const struct shell_cmd btshell_commands[] = {
         .sc_cmd_func = cmd_show_conn,
 #if MYNEWT_VAL(SHELL_CMD_HELP)
         .help = &gatt_show_conn_help,
+#endif
+    },
+    {
+        .sc_cmd = "set-scan-opts",
+        .sc_cmd_func = cmd_set_scan_opts,
+#if MYNEWT_VAL(SHELL_CMD_HELP)
+        .help = &set_scan_opts_help,
 #endif
     },
     {
@@ -3672,19 +3759,6 @@ static const struct shell_cmd btshell_commands[] = {
 void
 cmd_init(void)
 {
-#if MYNEWT_VAL(BLE_EXT_ADV)
-    int rc;
-
-    rc = os_mempool_init(&ext_adv_pool, 1, EXT_ADV_POOL_SIZE,
-                         ext_adv_mem, "ext_adv_mem");
-    assert(rc == 0);
-
-    rc = os_mbuf_pool_init(&ext_adv_mbuf_pool, &ext_adv_pool,
-                           EXT_ADV_POOL_SIZE, 1);
-
-    assert(rc == 0);
-#endif
-
     shell_register(BTSHELL_MODULE, btshell_commands);
     shell_register_default_module(BTSHELL_MODULE);
 }

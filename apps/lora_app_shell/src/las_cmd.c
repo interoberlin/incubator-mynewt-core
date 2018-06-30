@@ -20,8 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-#include "sysinit/sysinit.h"
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "console/console.h"
 #include "shell/shell.h"
 #include "parse/parse.h"
@@ -171,15 +170,22 @@ las_cmd_disp_byte_str(uint8_t *bytes, int len)
 static void
 las_cmd_disp_chan_mask(uint16_t *mask)
 {
-    int i;
-    int len;
+    uint16_t i;
+    uint16_t len;
+    uint16_t max_chans;
+    PhyParam_t phy_param;
+    GetPhyParams_t getPhy;
 
     if (!mask) {
         return;
     }
 
-    len = LORA_MAX_NB_CHANNELS / 16;
-    if ((len * 16) != LORA_MAX_NB_CHANNELS) {
+    getPhy.Attribute = PHY_MAX_NB_CHANNELS;
+    phy_param = RegionGetPhyParam(LORA_NODE_REGION, &getPhy);
+    max_chans = phy_param.Value;
+
+    len = max_chans / 16;
+    if ((len * 16) != max_chans) {
         len += 1;
     }
 
@@ -251,10 +257,12 @@ las_cmd_wr_mib(int argc, char **argv)
     int rc;
     int plen;
     uint8_t key[LORA_KEY_LEN];
-    uint16_t mask[6];
+    uint16_t mask[16];
     int mask_len;
     struct mib_pair *mp;
     MibRequestConfirm_t mib;
+    GetPhyParams_t getPhy;
+    PhyParam_t phy_param;
 
     if (argc < 3) {
         console_printf("Invalid # of arguments\n");
@@ -373,8 +381,11 @@ las_cmd_wr_mib(int argc, char **argv)
             /* NOTE: fall-through intentional */
         case MIB_CHANNELS_MASK:
             memset(mask, 0, sizeof(mask));
-            mask_len = LORA_MAX_NB_CHANNELS / 8;
-            if ((mask_len * 8) != LORA_MAX_NB_CHANNELS) {
+
+            getPhy.Attribute = PHY_MAX_NB_CHANNELS;
+            phy_param = RegionGetPhyParam(LORA_NODE_REGION, &getPhy);
+            mask_len = phy_param.Value / 8;
+            if ((mask_len * 8) != phy_param.Value) {
                 mask_len += 1;
             }
 

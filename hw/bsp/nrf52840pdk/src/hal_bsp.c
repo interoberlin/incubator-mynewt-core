@@ -20,10 +20,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
-#include <nrf52840.h>
-#include "os/os_cputime.h"
-#include "syscfg/syscfg.h"
-#include "sysflash/sysflash.h"
+#include "os/mynewt.h"
+#include "nrfx.h"
 #include "flash_map/flash_map.h"
 #include "hal/hal_bsp.h"
 #include "hal/hal_system.h"
@@ -32,10 +30,35 @@
 #include "hal/hal_watchdog.h"
 #include "hal/hal_i2c.h"
 #include "mcu/nrf52_hal.h"
+
+#if MYNEWT_VAL(TRNG)
+#include "trng/trng.h"
+#include "trng_nrf52/trng_nrf52.h"
+#endif
+#if MYNEWT_VAL(UART_0) || MYNEWT_VAL(UART_1)
 #include "uart/uart.h"
+#endif
+#if MYNEWT_VAL(UART_0) || MYNEWT_VAL(UART_1)
 #include "uart_hal/uart_hal.h"
-#include "os/os_dev.h"
+#endif
 #include "bsp.h"
+#if MYNEWT_VAL(ADC_0)
+#include <adc_nrf52/adc_nrf52.h>
+#include <nrfx_saadc.h>
+#endif
+#if MYNEWT_VAL(PWM_0) || \
+    MYNEWT_VAL(PWM_1) || \
+    MYNEWT_VAL(PWM_2) || \
+    MYNEWT_VAL(PWM_3)
+#include <pwm_nrf52/pwm_nrf52.h>
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+#include <soft_pwm/soft_pwm.h>
+#endif
+
+#if MYNEWT_VAL(TRNG)
+static struct trng_dev os_bsp_trng;
+#endif
 
 #if MYNEWT_VAL(UART_0)
 static struct uart_dev os_bsp_uart0;
@@ -48,11 +71,12 @@ static const struct nrf52_uart_cfg os_bsp_uart0_cfg = {
 #endif
 
 #if MYNEWT_VAL(UART_1)
-static struct uart_dev os_bsp_bitbang_uart1;
-static const struct uart_bitbang_conf os_bsp_uart1_cfg = {
-    .ubc_txpin = MYNEWT_VAL(UART_1_PIN_TX),
-    .ubc_rxpin = MYNEWT_VAL(UART_1_PIN_RX),
-    .ubc_cputimer_freq = MYNEWT_VAL(OS_CPUTIME_FREQ),
+static struct uart_dev os_bsp_uart1;
+static const struct nrf52_uart_cfg os_bsp_uart1_cfg = {
+    .suc_pin_tx = MYNEWT_VAL(UART_1_PIN_TX),
+    .suc_pin_rx = MYNEWT_VAL(UART_1_PIN_RX),
+    .suc_pin_rts = MYNEWT_VAL(UART_1_PIN_RTS),
+    .suc_pin_cts = MYNEWT_VAL(UART_1_PIN_CTS),
 };
 #endif
 
@@ -62,26 +86,55 @@ static const struct uart_bitbang_conf os_bsp_uart1_cfg = {
  * and is handled outside the SPI routines.
  */
 static const struct nrf52_hal_spi_cfg os_bsp_spi0m_cfg = {
-    .sck_pin      = 45,
-    .mosi_pin     = 46,
-    .miso_pin     = 47,
+    .sck_pin      = MYNEWT_VAL(SPI_0_MASTER_PIN_SCK),
+    .mosi_pin     = MYNEWT_VAL(SPI_0_MASTER_PIN_MOSI),
+    .miso_pin     = MYNEWT_VAL(SPI_0_MASTER_PIN_MISO),
 };
 #endif
 
 #if MYNEWT_VAL(SPI_0_SLAVE)
 static const struct nrf52_hal_spi_cfg os_bsp_spi0s_cfg = {
-    .sck_pin      = 45,
-    .mosi_pin     = 46,
-    .miso_pin     = 47,
-    .ss_pin       = 44,
+    .sck_pin      = MYNEWT_VAL(SPI_0_SLAVE_PIN_SCK),
+    .mosi_pin     = MYNEWT_VAL(SPI_0_SLAVE_PIN_MOSI),
+    .miso_pin     = MYNEWT_VAL(SPI_0_SLAVE_PIN_MISO),
+    .ss_pin       = MYNEWT_VAL(SPI_0_SLAVE_PIN_SS),
 };
+#endif
+
+#if MYNEWT_VAL(ADC_0)
+static struct adc_dev os_bsp_adc0;
+static struct nrf52_adc_dev_cfg os_bsp_adc0_config = {
+    .nadc_refmv     = MYNEWT_VAL(ADC_0_REFMV_0),
+};
+#endif
+
+#if MYNEWT_VAL(PWM_0)
+static struct pwm_dev os_bsp_pwm0;
+int pwm0_idx;
+#endif
+#if MYNEWT_VAL(PWM_1)
+static struct pwm_dev os_bsp_pwm1;
+int pwm1_idx;
+#endif
+#if MYNEWT_VAL(PWM_2)
+static struct pwm_dev os_bsp_pwm2;
+int pwm2_idx;
+#endif
+#if MYNEWT_VAL(PWM_3)
+static struct pwm_dev os_bsp_pwm3;
+int pwm3_idx;
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+static struct pwm_dev os_bsp_spwm[MYNEWT_VAL(SOFT_PWM_DEVS)];
+char* spwm_name[MYNEWT_VAL(SOFT_PWM_DEVS)];
+int spwm_idx[MYNEWT_VAL(SOFT_PWM_DEVS)];
 #endif
 
 #if MYNEWT_VAL(I2C_0)
 static const struct nrf52_hal_i2c_cfg hal_i2c0_cfg = {
-    .scl_pin = 27,
-    .sda_pin = 26,
-    .i2c_frequency = 100    /* 100 kHz */
+    .scl_pin = MYNEWT_VAL(I2C_0_PIN_SCL),
+    .sda_pin = MYNEWT_VAL(I2C_0_PIN_SDA),
+    .i2c_frequency = MYNEWT_VAL(I2C_0_FREQ_KHZ),
 };
 #endif
 
@@ -101,10 +154,15 @@ hal_bsp_flash_dev(uint8_t id)
     /*
      * Internal flash mapped to id 0.
      */
-    if (id != 0) {
-        return NULL;
+    if (id == 0) {
+        return &nrf52k_flash_dev;
     }
-    return &nrf52k_flash_dev;
+#if MYNEWT_VAL(QSPI_ENABLE)
+    if (id == 1) {
+        return &nrf52k_qspi_dev;
+    }
+#endif
+    return NULL;
 }
 
 const struct hal_bsp_mem_dump *
@@ -149,9 +207,21 @@ void
 hal_bsp_init(void)
 {
     int rc;
+#if MYNEWT_VAL(SOFT_PWM)
+    int idx;
+#endif
+
+    (void)rc;
 
     /* Make sure system clocks have started */
     hal_system_clock_start();
+
+#if MYNEWT_VAL(TRNG)
+    rc = os_dev_create(&os_bsp_trng.dev, "trng",
+                       OS_DEV_INIT_KERNEL, OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_trng_dev_init, NULL);
+    assert(rc == 0);
+#endif
 
 #if MYNEWT_VAL(TIMER_0)
     rc = hal_timer_init(0, NULL);
@@ -176,6 +246,72 @@ hal_bsp_init(void)
 #if MYNEWT_VAL(TIMER_5)
     rc = hal_timer_init(5, NULL);
     assert(rc == 0);
+#endif
+
+#if MYNEWT_VAL(ADC_0)
+    rc = os_dev_create((struct os_dev *) &os_bsp_adc0,
+                       "adc0",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_adc_dev_init,
+                       &os_bsp_adc0_config);
+    assert(rc == 0);
+#endif
+
+#if MYNEWT_VAL(PWM_0)
+    pwm0_idx = 0;
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm0,
+                       "pwm0",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       &pwm0_idx);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(PWM_1)
+    pwm1_idx = 1;
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm1,
+                       "pwm1",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       &pwm1_idx);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(PWM_2)
+    pwm2_idx = 2;
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm2,
+                       "pwm2",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       &pwm2_idx);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(PWM_3)
+    pwm3_idx = 3;
+    rc = os_dev_create((struct os_dev *) &os_bsp_pwm3,
+                       "pwm3",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_pwm_dev_init,
+                       &pwm3_idx);
+    assert(rc == 0);
+#endif
+#if MYNEWT_VAL(SOFT_PWM)
+    for (idx = 0; idx < MYNEWT_VAL(SOFT_PWM_DEVS); idx++)
+    {
+        spwm_name[idx] = "spwm0";
+        spwm_name[idx][4] = '0' + idx;
+        spwm_idx[idx] = idx;
+        rc = os_dev_create((struct os_dev *) &os_bsp_spwm[idx],
+                           spwm_name[idx],
+                           OS_DEV_INIT_KERNEL,
+                           OS_DEV_INIT_PRIO_DEFAULT,
+                           soft_pwm_dev_init,
+                           &spwm_idx[idx]);
+        assert(rc == 0);
+    }
 #endif
 
 #if (MYNEWT_VAL(OS_CPUTIME_TIMER_NUM) >= 0)
@@ -205,9 +341,73 @@ hal_bsp_init(void)
 #endif
 
 #if MYNEWT_VAL(UART_1)
-    rc = os_dev_create((struct os_dev *) &os_bsp_bitbang_uart1, "uart1",
-      OS_DEV_INIT_PRIMARY, 0, uart_bitbang_init, (void *)&os_bsp_uart1_cfg);
+    rc = os_dev_create((struct os_dev *) &os_bsp_uart1, "uart1",
+      OS_DEV_INIT_PRIMARY, 1, uart_hal_init, (void *)&os_bsp_uart1_cfg);
     assert(rc == 0);
 #endif
 
 }
+
+#if MYNEWT_VAL(BSP_USE_HAL_SPI)
+void
+bsp_spi_read_buf(uint8_t addr, uint8_t *buf, uint8_t size)
+{
+    int i;
+    uint8_t rxval;
+    NRF_SPI_Type *spi;
+    spi = NRF_SPI0;
+
+    if (size == 0) {
+        return;
+    }
+
+    i = -1;
+    spi->EVENTS_READY = 0;
+    spi->TXD = (uint8_t)addr;
+    while (size != 0) {
+        spi->TXD = 0;
+        while (!spi->EVENTS_READY) {}
+        spi->EVENTS_READY = 0;
+        rxval = (uint8_t)(spi->RXD);
+        if (i >= 0) {
+            buf[i] = rxval;
+        }
+        size -= 1;
+        ++i;
+        if (size == 0) {
+            while (!spi->EVENTS_READY) {}
+            spi->EVENTS_READY = 0;
+            buf[i] = (uint8_t)(spi->RXD);
+        }
+    }
+}
+
+void
+bsp_spi_write_buf(uint8_t addr, uint8_t *buf, uint8_t size)
+{
+    uint8_t i;
+    uint8_t rxval;
+    NRF_SPI_Type *spi;
+
+    if (size == 0) {
+        return;
+    }
+
+    spi = NRF_SPI0;
+
+    spi->EVENTS_READY = 0;
+
+    spi->TXD = (uint8_t)addr;
+    for (i = 0; i < size; ++i) {
+        spi->TXD = buf[i];
+        while (!spi->EVENTS_READY) {}
+        rxval = (uint8_t)(spi->RXD);
+        spi->EVENTS_READY = 0;
+    }
+
+    while (!spi->EVENTS_READY) {}
+    rxval = (uint8_t)(spi->RXD);
+    spi->EVENTS_READY = 0;
+    (void)rxval;
+}
+#endif

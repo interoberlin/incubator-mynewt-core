@@ -37,8 +37,7 @@
 #ifndef __ADAFRUIT_TSL2561_H__
 #define __ADAFRUIT_TSL2561_H__
 
-#include <os/os.h>
-#include "os/os_dev.h"
+#include "os/mynewt.h"
 #include "sensor/sensor.h"
 
 #ifdef __cplusplus
@@ -72,7 +71,7 @@ struct tsl2561 {
 /**
  * Expects to be called back through os_dev_create().
  *
- * @param ptr to the device object associated with this accelerometer
+ * @param ptr to the device object associated with this luminosity sensor
  * @param argument passed to OS device init
  *
  * @return 0 on success, non-zero on failure.

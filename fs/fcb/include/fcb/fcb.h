@@ -29,9 +29,8 @@ extern "C" {
 #include <inttypes.h>
 #include <limits.h>
 
+#include "os/mynewt.h"
 #include "flash_map/flash_map.h"
-
-#include "os/os_mutex.h"
 
 #define FCB_MAX_LEN	(CHAR_MAX | CHAR_MAX << 7) /* Max length of element */
 
@@ -73,6 +72,7 @@ struct fcb {
 #define FCB_ERR_NOMEM	-5
 #define FCB_ERR_CRC	-6
 #define FCB_ERR_MAGIC   -7
+#define FCB_ERR_VERSION -8
 
 int fcb_init(struct fcb *fcb);
 
@@ -83,8 +83,6 @@ struct fcb_log {
     struct fcb fl_fcb;
     uint8_t fl_entries;
 };
-
-int log_fcb_init(struct fcb_log *fcblog, struct fcb *fcb, uint16_t entries);
 
 /*
  * fcb_append() appends an entry to circular buffer. When writing the

@@ -19,8 +19,7 @@
 
 #include <stdlib.h>
 
-#include "syscfg/syscfg.h"
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "node/utilities.h"
 #include "node/lora_priv.h"
 
@@ -30,38 +29,20 @@ randr(int32_t min, int32_t max)
     return rand() % (max - min + 1) + min;
 }
 
-double
-ceil(double d)
+TimerTime_t
+TimerGetCurrentTime(void)
 {
-    int64_t i;
-
-    i = d;
-    if (d == i) {
-        return i;
-    }
-    return i + 1;
+    return hal_timer_read(MYNEWT_VAL(LORA_MAC_TIMER_NUM));
 }
 
-double
-floor(double d)
-{
-    return (int64_t)d;
-}
-
-double
-round(double d)
-{
-    return (int64_t)(d + 0.5);
-}
-
-uint32_t
-TimerGetElapsedTime(uint32_t savedTime)
+TimerTime_t
+TimerGetElapsedTime(TimerTime_t savedTime)
 {
     return hal_timer_read(MYNEWT_VAL(LORA_MAC_TIMER_NUM)) - savedTime;
 }
 
-uint32_t
-TimerGetFutureTime(uint32_t eventInFuture)
+TimerTime_t
+TimerGetFutureTime(TimerTime_t eventInFuture)
 {
     return hal_timer_read(MYNEWT_VAL(LORA_MAC_TIMER_NUM)) + eventInFuture;
 }

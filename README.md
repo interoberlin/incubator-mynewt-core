@@ -68,10 +68,12 @@ This repository contains the core packages of the Apache Mynewt OS, including:
 * A Pre-emptive, Real Time OS Kernel
 * A open-source Bluetooth 5.0 stack (both Host & Controller), NimBLE, that
 completely replaces the proprietary SoftDevice on Nordic chipsets.
+<span style="color:red">**NOTE** NimBLE sources were moved to separate [repository](https://github.com/apache/mynewt-nimble).</span>
     - Support for 251 byte packet size
     - Support for all 4 roles concurrently - Broadcaster, Observer, Peripheral and Central
     - Support for up to 32 simultaneous connections.
     - Legacy and SC (secure connections) SMP support (pairing and bonding).
+    - Advertising Extensions.
 * A flash filesystem, NFFS, which is designed for tiny (128KB->16MB) flashes.
 * FatFS
 * Flash Circular Buffer
@@ -85,20 +87,6 @@ completely replaces the proprietary SoftDevice on Nordic chipsets.
 
 For more information on the Mynewt OS, please visit our website [here](https://mynewt.apache.org/).
 If you'd like to get started, visit the [Quick Start Guide](http://mynewt.apache.org/quick-start/).
-
-## Roadmap
-
-Mynewt is being actively developed.  Some of the features we're currently working on:
-
-* Deep sleep: Mynewt OS will coordinate peripherals and processor to put the
-  processor to sleep when all tasks are idle.
-* Sensor API
-* IP Stack
-* Support for different boards and microcontroller architectures, we're working
-  on:
-    - ESP8266
-    - Arduino Uno
-    - Arduino Mega
 
 ## Browsing
 
@@ -114,9 +102,10 @@ shell ([sys/shell](https://github.com/apache/mynewt-core/tree/master/sys/shell))
 - mgmt: Contains the management libraries for newtmgr [mgmt/newtmgr](https://github.com/apache/mynewt-core/tree/master/sys/newtmgr)), which supports software upgrade and remote fetching of logs and statistics.
 
 - net: Contains the networking packages.  Highlights of the net directory are the NimBLE and IP packages.
-[Nimble](https://github.com/apache/mynewt-core/tree/master/net/nimble)
+[Nimble](https://github.com/apache/mynewt-nimble)
 is a full Bluetooth host and controller implementation, that is written
-from the ground up for the Apache Mynewt Operating System.
+from the ground up for the Apache Mynewt Operating System (due to code moved to
+separate repo this folder contains only compatibility package files).
 [ip](https://github.com/apache/mynewt-core/tree/master/net/ip) is a port of LWIP, a complete IPv4 and IPv6 implementation.
 
 - hw: Contains the HW specific support packages.  Board Support Packages
@@ -156,8 +145,7 @@ host-only implementation, such as Linux's BlueZ, can interface with this
 application via HCI over UART.
 * [bleprph](https://github.com/apache/mynewt-core/tree/master/apps/bleprph): An
   implementation of a minimal BLE peripheral.
-* [bletiny](https://github.com/apache/mynewt-core/tree/master/apps/bletiny): A
-  stripped down interface to the Apache Mynewt Bluetooth stack.
+* [btshell](https://github.com/apache/mynewt-core/tree/master/apps/btshell): Shell interface to the Apache Mynewt Bluetooth stack.
 * [bleuart](https://github.com/apache/mynewt-core/tree/master/apps/bleuart):
 Implements a simple BLE peripheral that supports the Nordic
 UART / Serial Port Emulation service
@@ -203,15 +191,16 @@ pushed through https://git.apache.org/.
 ## Filing Bugs
 
 Bugs can be filed on the
-[Apache Mynewt Bug Tracker](https://issues.apache.org/jira/browse/MYNEWT).
+[Apache Mynewt Issues](https://github.com/apache/mynewt-core/issues).
+Please label the issue as a "Bug".
 
 Where possible, please include a self-contained reproduction case!
 
 ## Feature Requests
 
 Feature requests should also be filed on the
-[Apache Mynewt Bug Tracker](https://issues.apache.org/jira/browse/MYNEWT).
-Please introduce it as a ticket type "Wish."
+[Apache Mynewt Bug Tracker](https://github.com/apache/mynewt-core/issues).
+Please label the issue as a "Feature" or "Enhancement" depending on the scope.
 
 ## Writing Tests
 
@@ -223,10 +212,7 @@ code coverage is a win for every Apache Mynewt user.
 Contributing to documentation (in addition to writing tests), is a great way
 to get involved with the Apache Mynewt project.
 
-Pull requests to the apache-mynewt-site repository on Github are the best
-way to submit documentation.  For more information on contributing to the
-documentation, the [FAQ](https://mynewt.apache.org/faq/answers/) has some
-more information.
+The Mynewt core OS documentation is found in [/docs](/docs).
 
 # License
 

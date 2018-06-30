@@ -21,10 +21,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "defs/error.h"
-
-#include "os/os.h"
-#include "sysinit/sysinit.h"
+#include "os/mynewt.h"
 
 #include "sensor/sensor.h"
 #include "sensor/accel.h"
@@ -46,7 +43,7 @@ static const struct sensor_driver g_sim_accel_sensor_driver = {
 /**
  * Expects to be called back through os_dev_create().
  *
- * @param The device object associated with this accellerometer
+ * @param The device object associated with this accelerometer
  * @param Argument passed to OS device init, unused
  *
  * @return 0 on success, non-zero error on failure.

@@ -19,53 +19,34 @@
 
 #include <assert.h>
 #include <string.h>
-
-#include "os/os.h"
+#include "syscfg/syscfg.h"
+#if !MYNEWT_VAL(OS_SYSVIEW_TRACE_CALLOUT)
+#define OS_TRACE_DISABLE_FILE_API
+#endif
+#include "os/mynewt.h"
 #include "os_priv.h"
 
-/**
- * @addtogroup OSKernel
- * @{
- *   @defgroup OSCallouts Event Timers (Callouts)
- *   @{
- */
 struct os_callout_list g_callout_list;
 
-/**
- * Initialize a callout.
- *
- * Callouts are used to schedule events in the future onto a task's event
- * queue.  Callout timers are scheduled using the os_callout_reset()
- * function.  When the timer expires, an event is posted to the event
- * queue specified in os_callout_init().  The event argument given here
- * is posted in the ev_arg field of that event.
- *
- * @param c The callout to initialize
- * @param evq The event queue to post an OS_EVENT_T_TIMER event to
- * @param timo_func The function to call on this callout for the host task
- *                  used to provide multiple timer events to a task
- *                  (this can be NULL.)
- * @param ev_arg The argument to provide to the event when posting the
- *               timer.
- */
 void os_callout_init(struct os_callout *c, struct os_eventq *evq,
                      os_event_fn *ev_cb, void *ev_arg)
 {
+    os_trace_api_u32x2(OS_TRACE_ID_CALLOUT_INIT, (uint32_t)c, (uint32_t)evq);
+
     memset(c, 0, sizeof(*c));
     c->c_ev.ev_cb = ev_cb;
     c->c_ev.ev_arg = ev_arg;
     c->c_evq = evq;
+
+    os_trace_api_ret(OS_TRACE_ID_CALLOUT_INIT);
 }
 
-/**
- * Stop the callout from firing off, any pending events will be cleared.
- *
- * @param c The callout to stop
- */
 void
 os_callout_stop(struct os_callout *c)
 {
     os_sr_t sr;
+
+    os_trace_api_u32(OS_TRACE_ID_CALLOUT_STOP, (uint32_t)c);
 
     OS_ENTER_CRITICAL(sr);
 
@@ -79,25 +60,21 @@ os_callout_stop(struct os_callout *c)
     }
 
     OS_EXIT_CRITICAL(sr);
+
+    os_trace_api_ret(OS_TRACE_ID_CALLOUT_STOP);
 }
 
-/**
- * Reset the callout to fire off in 'ticks' ticks.
- *
- * @param c The callout to reset
- * @param ticks The number of ticks to wait before posting an event
- *
- * @return 0 on success, non-zero on failure
- */
 int
 os_callout_reset(struct os_callout *c, int32_t ticks)
 {
     struct os_callout *entry;
     os_sr_t sr;
-    int rc;
+    int ret;
+
+    os_trace_api_u32x2(OS_TRACE_ID_CALLOUT_RESET, (uint32_t)c, (uint32_t)ticks);
 
     if (ticks < 0) {
-        rc = OS_EINVAL;
+        ret = OS_EINVAL;
         goto err;
     }
 
@@ -126,10 +103,13 @@ os_callout_reset(struct os_callout *c, int32_t ticks)
 
     OS_EXIT_CRITICAL(sr);
 
-    return (0);
+    ret = OS_OK;
+
 err:
-    return (rc);
+    os_trace_api_ret_u32(OS_TRACE_ID_CALLOUT_RESET, (uint32_t)ret);
+    return ret;
 }
+
 
 /**
  * This function is called by the OS in the time tick.  It searches the list
@@ -143,6 +123,8 @@ os_callout_tick(void)
     os_sr_t sr;
     struct os_callout *c;
     uint32_t now;
+
+    os_trace_api_void(OS_TRACE_ID_CALLOUT_TICK);
 
     now = os_time_get();
 
@@ -169,6 +151,8 @@ os_callout_tick(void)
             break;
         }
     }
+
+    os_trace_api_ret(OS_TRACE_ID_CALLOUT_TICK);
 }
 
 /*
@@ -201,19 +185,14 @@ os_callout_wakeup_ticks(os_time_t now)
     return (rt);
 }
 
-/*
- * Returns the number of ticks which remains to callout..
- *
- * @param c callout
- * @param now The time now
- *
- * @return Number of ticks to first pending callout
- */
-os_time_t os_callout_remaining_ticks(struct os_callout *c, os_time_t now)
+
+os_time_t
+os_callout_remaining_ticks(struct os_callout *c, os_time_t now)
 {
+    os_sr_t sr;
     os_time_t rt;
 
-    OS_ASSERT_CRITICAL();
+    OS_ENTER_CRITICAL(sr);
 
     if (OS_TIME_TICK_GEQ(c->c_ticks, now)) {
         rt = c->c_ticks - now;
@@ -221,10 +200,8 @@ os_time_t os_callout_remaining_ticks(struct os_callout *c, os_time_t now)
         rt = 0;     /* callout time is in the past */
     }
 
+    OS_EXIT_CRITICAL(sr);
+
     return rt;
 }
 
-/**
- *   @} Callout Timers
- * @} OS Kernel
- */

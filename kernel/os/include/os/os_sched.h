@@ -33,6 +33,8 @@
 extern "C" {
 #endif
 
+
+/** @cond INTERNAL_HIDDEN */
 struct os_task;
 
 TAILQ_HEAD(os_task_list, os_task);
@@ -42,6 +44,15 @@ extern struct os_task_list g_os_run_list;
 extern struct os_task_list g_os_sleep_list;
 
 void os_sched_ctx_sw_hook(struct os_task *);
+
+/** @endcond */
+
+/**
+ * Returns the currently running task. Note that this task may or may not be
+ * the highest priority task ready to run.
+ *
+ * @return The currently running task.
+ */
 struct os_task *os_sched_get_current_task(void);
 void os_sched_set_current_task(struct os_task *);
 struct os_task *os_sched_next_task(void);
@@ -80,6 +91,7 @@ struct os_task *os_sched_next_task(void);
  */
 void os_sched(struct os_task *);
 
+/** @cond INTERNAL_HIDDEN */
 void os_sched_os_timer_exp(void);
 os_error_t os_sched_insert(struct os_task *);
 int os_sched_sleep(struct os_task *, os_time_t nticks);
@@ -87,6 +99,8 @@ int os_sched_wakeup(struct os_task *);
 int os_sched_remove(struct os_task *);
 void os_sched_resort(struct os_task *);
 os_time_t os_sched_wakeup_ticks(os_time_t now);
+
+/** @endcond */
 
 #ifdef __cplusplus
 }

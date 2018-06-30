@@ -15,9 +15,11 @@ Maintainer: Miguel Luis and Gregory Cristian
 #include <assert.h>
 #include "hal/hal_spi.h"
 #include "bsp/bsp.h"
-#include "node/radio.h"
+#include "radio/radio.h"
 #include "sx1276.h"
 #include "sx1276-board.h"
+
+extern DioIrqHandler *DioIrq[];
 
 #if MYNEWT_VAL(SX1276_HAS_ANT_SW)
 /*!
@@ -52,16 +54,18 @@ const struct Radio_s Radio =
     .WriteBuffer = SX1276WriteBuffer,
     .ReadBuffer = SX1276ReadBuffer,
     .SetMaxPayloadLength = SX1276SetMaxPayloadLength,
-    .SetPublicNetwork = SX1276SetPublicNetwork
+    .SetPublicNetwork = SX1276SetPublicNetwork,
+    .GetWakeupTime = SX1276GetWakeupTime
 };
 
-void SX1276IoInit( void )
+void
+SX1276IoInit(void)
 {
     struct hal_spi_settings spi_settings;
     int rc;
 
 #if MYNEWT_VAL(SX1276_HAS_ANT_SW)
-    rc = hal_gpio_init_out(SX1276_RXTX, 1);
+    rc = hal_gpio_init_out(SX1276_RXTX, 0);
     assert(rc == 0);
 #endif
 
@@ -82,107 +86,148 @@ void SX1276IoInit( void )
     assert(rc == 0);
 }
 
-void SX1276IoIrqInit( DioIrqHandler **irqHandlers )
+void
+SX1276IoIrqInit(DioIrqHandler **irqHandlers)
 {
     int rc;
 
-    rc = hal_gpio_irq_init(SX1276_DIO0, irqHandlers[0], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO0);
+    if (irqHandlers[0] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO0, irqHandlers[0], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO0);
+    }
 
-    rc = hal_gpio_irq_init(SX1276_DIO1, irqHandlers[1], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO1);
+    if (irqHandlers[1] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO1, irqHandlers[1], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO1);
+    }
 
-    rc = hal_gpio_irq_init(SX1276_DIO2, irqHandlers[2], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO2);
+    if (irqHandlers[2] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO2, irqHandlers[2], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO2);
+    }
 
-    rc = hal_gpio_irq_init(SX1276_DIO3, irqHandlers[3], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO3);
+    if (irqHandlers[3] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO3, irqHandlers[3], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO3);
+    }
 
-    rc = hal_gpio_irq_init(SX1276_DIO4, irqHandlers[4], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO4);
+    if (irqHandlers[4] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO4, irqHandlers[4], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO4);
+    }
 
-    rc = hal_gpio_irq_init(SX1276_DIO5, irqHandlers[5], NULL,
-                           HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
-    assert(rc == 0);
-    hal_gpio_irq_enable(SX1276_DIO5);
+    if (irqHandlers[5] != NULL) {
+        rc = hal_gpio_irq_init(SX1276_DIO5, irqHandlers[5], NULL,
+                               HAL_GPIO_TRIG_RISING, HAL_GPIO_PULL_NONE);
+        assert(rc == 0);
+        hal_gpio_irq_enable(SX1276_DIO5);
+    }
 }
 
-void SX1276IoDeInit( void )
+void
+SX1276IoDeInit( void )
 {
-    hal_gpio_irq_release(SX1276_DIO0);
-    hal_gpio_irq_release(SX1276_DIO1);
-    hal_gpio_irq_release(SX1276_DIO2);
-    hal_gpio_irq_release(SX1276_DIO3);
-    hal_gpio_irq_release(SX1276_DIO4);
-    hal_gpio_irq_release(SX1276_DIO5);
+    if (DioIrq[0] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO0);
+    }
+    if (DioIrq[1] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO1);
+    }
+    if (DioIrq[2] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO2);
+    }
+    if (DioIrq[3] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO3);
+    }
+    if (DioIrq[4] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO4);
+    }
+    if (DioIrq[5] != NULL) {
+        hal_gpio_irq_release(SX1276_DIO5);
+    }
 }
 
-uint8_t SX1276GetPaSelect( uint32_t channel )
+uint8_t
+SX1276GetPaSelect(uint32_t channel)
 {
-    if( channel < RF_MID_BAND_THRESH )
-    {
-        return RF_PACONFIG_PASELECT_PABOOST;
+    uint8_t pacfg;
+
+    if (channel < RF_MID_BAND_THRESH) {
+#if (MYNEWT_VAL(SX1276_LF_USE_PA_BOOST) == 1)
+        pacfg = RF_PACONFIG_PASELECT_PABOOST;
+#else
+        pacfg = RF_PACONFIG_PASELECT_RFO;
+#endif
+    } else {
+#if (MYNEWT_VAL(SX1276_HF_USE_PA_BOOST) == 1)
+        pacfg = RF_PACONFIG_PASELECT_PABOOST;
+#else
+        pacfg = RF_PACONFIG_PASELECT_RFO;
+#endif
     }
-    else
-    {
-        return RF_PACONFIG_PASELECT_RFO;
-    }
+
+    return pacfg;
 }
 
 #if MYNEWT_VAL(SX1276_HAS_ANT_SW)
 void SX1276SetAntSwLowPower( bool status )
 {
-    if( RadioIsActive != status )
-    {
+    if (RadioIsActive != status) {
         RadioIsActive = status;
 
-        if( status == false )
-        {
+        if (status == false) {
             SX1276AntSwInit( );
-        }
-        else
-        {
+        } else {
             SX1276AntSwDeInit( );
         }
     }
 }
 
-void SX1276AntSwInit( void )
+void
+SX1276AntSwInit(void)
 {
     // Consider turning off GPIO pins for low power. They are always on right
     // now. GPIOTE library uses 0.5uA max when on, typical 0.1uA.
 }
 
-void SX1276AntSwDeInit( void )
+void
+SX1276AntSwDeInit(void)
 {
     // Consider this for low power - ie turning off GPIO pins
 }
 
-void SX1276SetAntSw( uint8_t rxTx )
+void
+SX1276SetAntSw(uint8_t rxTx)
 {
-    if( rxTx != 0 ) // 1: TX, 0: RX
-    {
+    // 1: TX, 0: RX
+    if (rxTx != 0) {
         hal_gpio_write(SX1276_RXTX, 1);
-    }
-    else
-    {
+    } else {
         hal_gpio_write(SX1276_RXTX, 0);
     }
 }
 #endif
 
-bool SX1276CheckRfFrequency( uint32_t frequency )
+bool
+SX1276CheckRfFrequency(uint32_t frequency)
 {
     // Implement check. Currently all frequencies are supported
     return true;
 }
+
+uint32_t
+SX1276GetBoardTcxoWakeupTime(void)
+{
+    return 0;
+}
+

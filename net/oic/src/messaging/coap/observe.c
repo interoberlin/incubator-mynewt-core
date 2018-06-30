@@ -34,10 +34,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <syscfg/syscfg.h>
-
-#include <os/os_mempool.h>
-#include <os/queue.h>
+#include "os/mynewt.h"
 
 #include "oic/port/mynewt/config.h"
 
@@ -77,7 +74,7 @@ add_observer(oc_resource_t *resource, oc_endpoint_t *endpoint,
         }
         memcpy(o->url, uri, max);
         o->url[max] = 0;
-        memcpy(&o->endpoint, endpoint, sizeof(oc_endpoint_t));
+        memcpy(&o->endpoint, endpoint, oc_endpoint_size(endpoint));
         o->token_len = token_len;
         memcpy(o->token, token, token_len);
         o->last_mid = 0;

@@ -18,14 +18,17 @@
  */
 
 #include <assert.h>
-#include "syscfg/syscfg.h"
+#include "os/mynewt.h"
 #include "bsp/bsp.h"
 #include "stm32f407xx.h"
 #include "stm32f4xx_hal_gpio_ex.h"
 #include "stm32f4xx_hal_dma.h"
 #include "stm32f4xx_hal_adc.h"
 #include "flash_map/flash_map.h"
-#include "os/os_dev.h"
+#if MYNEWT_VAL(TRNG)
+#include "trng/trng.h"
+#include "trng_stm32/trng_stm32.h"
+#endif
 #if MYNEWT_VAL(UART_0)
 #include "uart/uart.h"
 #include "uart_hal/uart_hal.h"
@@ -45,8 +48,13 @@
 #include "stm32_eth/stm32_eth.h"
 #include "stm32_eth/stm32_eth_cfg.h"
 #endif
+#include "mcu/stm32_hal.h"
 #include "mcu/stm32f4_bsp.h"
 #include "mcu/stm32f4xx_mynewt_hal.h"
+
+#if MYNEWT_VAL(TRNG)
+static struct trng_dev os_bsp_trng;
+#endif
 
 #if MYNEWT_VAL(UART_0)
 struct uart_dev hal_uart0;
@@ -254,7 +262,7 @@ struct stm32f4_adc_dev_cfg adc3_config = STM32F4_ADC3_DEFAULT_CONFIG;
 #endif
 
 #if MYNEWT_VAL(I2C_0)
-static struct stm32f4_hal_i2c_cfg i2c_cfg0 = {
+static struct stm32_hal_i2c_cfg i2c_cfg0 = {
     .hic_i2c = I2C1,
     .hic_rcc_reg = &RCC->APB1ENR,
     .hic_rcc_dev = RCC_APB1ENR_I2C1EN,
@@ -267,7 +275,7 @@ static struct stm32f4_hal_i2c_cfg i2c_cfg0 = {
 #endif
 
 #if MYNEWT_VAL(SPI_0_SLAVE) || MYNEWT_VAL(SPI_0_MASTER)
-struct stm32f4_hal_spi_cfg spi0_cfg = {
+struct stm32_hal_spi_cfg spi0_cfg = {
     .ss_pin = MCU_GPIO_PORTA(4),		/* PA4 */
     .sck_pin  = MCU_GPIO_PORTA(5),		/* PA5 */
     .miso_pin = MCU_GPIO_PORTA(6),		/* PA6 */
@@ -276,7 +284,7 @@ struct stm32f4_hal_spi_cfg spi0_cfg = {
 };
 #endif
 #if MYNEWT_VAL(UART_0)
-static const struct stm32f4_uart_cfg uart_cfg0 = {
+static const struct stm32_uart_cfg uart_cfg0 = {
     .suc_uart = USART6,
     .suc_rcc_reg = &RCC->APB2ENR,
     .suc_rcc_dev = RCC_APB2ENR_USART6EN,
@@ -376,6 +384,13 @@ hal_bsp_init(void)
     int rc;
 
     (void)rc;
+
+#if MYNEWT_VAL(TRNG)
+    rc = os_dev_create(&os_bsp_trng.dev, "trng", OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT, stm32_trng_dev_init, NULL);
+    assert(rc == 0);
+#endif
+
 #if MYNEWT_VAL(SPI_0_MASTER)
     rc = hal_spi_init(0, &spi0_cfg, HAL_SPI_TYPE_MASTER);
     assert(rc == 0);

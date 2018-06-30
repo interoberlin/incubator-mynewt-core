@@ -21,12 +21,12 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "os/mynewt.h"
 #include "testutil/testutil.h"
-#include "os/os.h"
 #include "os_test_priv.h"
 
 #ifdef __cplusplus
-#extern "C" {
+extern "C" {
 #endif
 
 /* Limit max blocks for testing */
@@ -59,7 +59,7 @@ extern int verbose;
 
 int mempool_test_get_pool_size(int num_blocks, int block_size);
 
-void mempool_test(int num_blocks, int block_size);
+void mempool_test(int num_blocks, int block_size, bool clear);
 
 #ifdef __cplusplus
 }

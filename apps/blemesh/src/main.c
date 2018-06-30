@@ -16,9 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 #include <assert.h>
-#include "sysinit/sysinit.h"
-#include "os/os.h"
+#include "os/mynewt.h"
 #include "mesh/mesh.h"
 #include "console/console.h"
 #include "hal/hal_system.h"
@@ -34,8 +34,8 @@
 
 #define BT_DBG_ENABLED (MYNEWT_VAL(BLE_MESH_DEBUG))
 
-/* Company ID*/
-#define CID_VENDOR 0xFFFF
+/* Company ID */
+#define CID_VENDOR 0x05C3
 #define STANDARD_TEST_ID 0x00
 #define TEST_ID 0x01
 static int recent_test_id = STANDARD_TEST_ID;
@@ -408,8 +408,13 @@ blemesh_on_sync(void)
 }
 
 int
-main(void)
+main(int argc, char **argv)
 {
+
+#ifdef ARCH_sim
+    mcu_sim_parse_args(argc, argv);
+#endif
+
     /* Initialize OS */
     sysinit();
 
@@ -422,7 +427,6 @@ main(void)
 
     hal_gpio_init_out(LED_2, 0);
 
-    bt_mesh_register_gatt();
     health_pub_init();
 
     while (1) {

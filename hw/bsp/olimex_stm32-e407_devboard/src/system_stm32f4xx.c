@@ -65,7 +65,7 @@
 
 #include "bsp/stm32f4xx_hal_conf.h"
 #include "stm32f4xx.h"
-#include "bsp/cmsis_nvic.h"
+#include "mcu/cmsis_nvic.h"
 
 /**
   * @}
@@ -109,6 +109,7 @@
 uint32_t SystemCoreClock = 168000000;
 
 const uint8_t AHBPrescTable[16] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9};
+const uint8_t APBPrescTable[8] = {0U, 0U, 0U, 0U, 1U, 2U, 3U, 4U};
 
 /**
   * @}

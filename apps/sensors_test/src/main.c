@@ -17,10 +17,7 @@
  * under the License.
  */
 
-#include "syscfg/syscfg.h"
-#include "sysinit/sysinit.h"
-#include "sysflash/sysflash.h"
-#include <os/os.h>
+#include "os/mynewt.h"
 #include <bsp/bsp.h>
 #include <hal/hal_gpio.h>
 #include <hal/hal_flash.h>
@@ -34,8 +31,6 @@
 #include <string.h>
 #include <reboot/log_reboot.h>
 #include <id/id.h>
-#include <os/os_time.h>
-#include <defs/error.h>
 
 #if MYNEWT_VAL(BNO055_CLI)
 #include <bno055/bno055.h>
@@ -49,12 +44,19 @@
 #if MYNEWT_VAL(BMA253_CLI)
 #include <bma253/bma253.h>
 #endif
+#if MYNEWT_VAL(BMA2XX_CLI)
+#include <bma2xx/bma2xx.h>
+#endif
 #if MYNEWT_VAL(BME280_CLI)
 #include <bme280/bme280.h>
 #endif
 #if MYNEWT_VAL(BMP280_CLI)
 #include <bmp280/bmp280.h>
 #endif
+#if MYNEWT_VAL(DRV2605_CLI)
+#include <drv2605/drv2605.h>
+#endif
+
 
 #if MYNEWT_VAL(SENSOR_OIC)
 #include <oic/oc_api.h>
@@ -422,6 +424,9 @@ sensors_dev_shell_init(void)
 #if MYNEWT_VAL(BMA253_CLI)
     bma253_shell_init();
 #endif
+#if MYNEWT_VAL(BMA2XX_CLI)
+    bma2xx_shell_init();
+#endif
 
 #if MYNEWT_VAL(BME280_CLI)
     bme280_shell_init();
@@ -429,6 +434,10 @@ sensors_dev_shell_init(void)
 
 #if MYNEWT_VAL(BMP280_CLI)
     bmp280_shell_init();
+#endif
+
+#if MYNEWT_VAL(DRV2605_CLI)
+    drv2605_shell_init();
 #endif
 }
 

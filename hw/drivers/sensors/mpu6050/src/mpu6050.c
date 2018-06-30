@@ -21,9 +21,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "defs/error.h"
-#include "os/os.h"
-#include "sysinit/sysinit.h"
+#include "os/mynewt.h"
 #include "hal/hal_i2c.h"
 #include "sensor/sensor.h"
 #include "sensor/accel.h"
@@ -89,7 +87,7 @@ mpu6050_write8(struct sensor_itf *itf, uint8_t reg, uint32_t value)
                               OS_TICKS_PER_SEC / 10, 1);
 
     if (rc) {
-        MPU6050_ERR("Failed to write to 0x%02X:0x%02X with value 0x%02X\n",
+        MPU6050_ERR("Failed to write to 0x%02X:0x%02X with value 0x%02lX\n",
                        itf->si_addr, reg, value);
         STATS_INC(g_mpu6050stats, read_errors);
     }
@@ -359,7 +357,7 @@ mpu6050_config_interrupt(struct sensor_itf *itf, uint8_t cfg)
 /**
  * Expects to be called back through os_dev_create().
  *
- * @param The device object associated with this accellerometer
+ * @param The device object associated with this accelerometer
  * @param Argument passed to OS device init, unused
  *
  * @return 0 on success, non-zero error on failure.
@@ -529,11 +527,11 @@ mpu6050_sensor_read(struct sensor *sensor, sensor_type_t type,
             return rc;
         }
 
-        x = (int16_t)((payload[0] << 8) | payload[1]);
-        y = (int16_t)((payload[2] << 8) | payload[3]);
-        z = (int16_t)((payload[4] << 8) | payload[5]);
+        x = (((int16_t)payload[0]) << 8) | payload[1];
+        y = (((int16_t)payload[2]) << 8) | payload[3];
+        z = (((int16_t)payload[4]) << 8) | payload[5];
 
-        switch (mpu->cfg.gyro_range) {
+        switch (mpu->cfg.accel_range) {
             case MPU6050_ACCEL_RANGE_2: /* +/- 2g - 16384 LSB/g */
             /* Falls through */
             default:
@@ -571,9 +569,9 @@ mpu6050_sensor_read(struct sensor *sensor, sensor_type_t type,
             return rc;
         }
 
-        x = (int16_t)((payload[0] << 8) | payload[1]);
-        y = (int16_t)((payload[2] << 8) | payload[3]);
-        z = (int16_t)((payload[4] << 8) | payload[5]);
+        x = (((int16_t)payload[0]) << 8) | payload[1];
+        y = (((int16_t)payload[2]) << 8) | payload[3];
+        z = (((int16_t)payload[4]) << 8) | payload[5];
 
         switch (mpu->cfg.gyro_range) {
             case MPU6050_GYRO_RANGE_250: /* +/- 250 Deg/s - 131 LSB/Deg/s */

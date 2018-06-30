@@ -21,10 +21,9 @@
 #include <stdint.h>
 #include <assert.h>
 #include <errno.h>
-#include "syscfg/syscfg.h"
-#include "bsp/cmsis_nvic.h"
+#include "os/mynewt.h"
+#include "mcu/cmsis_nvic.h"
 #include "hal/hal_timer.h"
-#include "os/os_trace_api.h"
 #include "nrf.h"
 #include "mcu/nrf52_hal.h"
 
@@ -318,7 +317,7 @@ hal_timer_irq_handler(struct nrf52_hal_timer *bsptimer)
     uint32_t compare;
     NRF_TIMER_Type *hwtimer;
 
-    os_trace_enter_isr();
+    os_trace_isr_enter();
 
     /* Check interrupt source. If set, clear them */
     hwtimer = bsptimer->tmr_reg;
@@ -346,7 +345,7 @@ hal_timer_irq_handler(struct nrf52_hal_timer *bsptimer)
         compare = hwtimer->EVENTS_COMPARE[NRF_TIMER_CC_INT];
     }
 
-    os_trace_exit_isr();
+    os_trace_isr_exit();
 }
 #endif
 
@@ -357,6 +356,8 @@ hal_rtc_timer_irq_handler(struct nrf52_hal_timer *bsptimer)
     uint32_t overflow;
     uint32_t compare;
     NRF_RTC_Type *rtctimer;
+
+    os_trace_isr_enter();
 
     /* Check interrupt source. If set, clear them */
     rtctimer = (NRF_RTC_Type *)bsptimer->tmr_reg;
@@ -387,6 +388,8 @@ hal_rtc_timer_irq_handler(struct nrf52_hal_timer *bsptimer)
 
     /* Recommended by nordic to make sure interrupts are cleared */
     compare = rtctimer->EVENTS_COMPARE[NRF_RTC_TIMER_CC_INT];
+
+    os_trace_isr_exit();
 }
 #endif
 

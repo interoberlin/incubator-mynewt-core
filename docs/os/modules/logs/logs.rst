@@ -4,7 +4,13 @@ Logging
 Mynewt log package supports logging of information within a Mynewt
 application. It allows packages to define their own log streams with
 separate names. It also allows an application to control the output
-destination of logs. ### Description
+destination of logs. 
+
+.. contents::
+  :local:
+  :depth: 2
+
+### Description
 
 In the Mynewt OS, the log package comes in two versions:
 
@@ -205,5 +211,4 @@ handler:
 Log API and Log Levels
 ~~~~~~~~~~~~~~~~~~~~~~
 
-For more information on the ``log`` API and log levels, see the
-``sys/log/full/include/log/log.h`` header file.
+.. doxygenfile:: full/include/log/log.h

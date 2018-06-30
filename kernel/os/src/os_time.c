@@ -16,19 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "syscfg/syscfg.h"
 
 #include <assert.h>
-
-#include "os/os.h"
-#include "os/queue.h"
-
-/**
- * @addtogroup OSKernel
- * @{
- *   @defgroup OSTime Time
- *   @{
- */
+#include "os/mynewt.h"
 
 CTASSERT(sizeof(os_time_t) == 4);
 
@@ -57,11 +47,6 @@ os_deltatime(os_time_t delta, const struct os_timeval *base,
     os_timeradd(base, &tvdelta, result);
 }
 
-/**
- * Get the current OS time in ticks
- *
- * @return OS time in ticks
- */
 os_time_t
 os_time_get(void)
 {
@@ -94,11 +79,6 @@ os_time_tick(int ticks)
     OS_EXIT_CRITICAL(sr);
 }
 
-/**
- * Move OS time forward ticks.
- *
- * @param ticks The number of ticks to move time forward.
- */
 void
 os_time_advance(int ticks)
 {
@@ -123,12 +103,6 @@ os_time_advance(int ticks)
 }
 #endif
 
-/**
- * Puts the current task to sleep for the specified number of os ticks. There
- * is no delay if ticks is <= 0.
- *
- * @param osticks Number of ticks to delay (<= 0 means no delay).
- */
 void
 os_time_delay(int32_t osticks)
 {
@@ -142,15 +116,6 @@ os_time_delay(int32_t osticks)
     }
 }
 
-/**
- * Set the time of day.  This does not modify os time, but rather just modifies
- * the offset by which we are tracking real time against os time.
- *
- * @param utctime A timeval representing the UTC time we are setting
- * @param tz The time-zone to apply against the utctime being set.
- *
- * @return 0 on success, non-zero on failure.
- */
 int
 os_settimeofday(struct os_timeval *utctime, struct os_timezone *tz)
 {
@@ -176,16 +141,6 @@ os_settimeofday(struct os_timeval *utctime, struct os_timezone *tz)
     return (0);
 }
 
-/**
- * Get the current time of day.  Returns the time of day in UTC
- * into the tv argument, and returns the timezone (if set) into
- * tz.
- *
- * @param tv The structure to put the UTC time of day into
- * @param tz The structure to put the timezone information into
- *
- * @return 0 on success, non-zero on failure
- */
 int
 os_gettimeofday(struct os_timeval *tv, struct os_timezone *tz)
 {
@@ -206,19 +161,13 @@ os_gettimeofday(struct os_timeval *tv, struct os_timezone *tz)
     return (0);
 }
 
-/**
- * Get time since boot in microseconds.
- *
- * @return time since boot in microseconds
- */
-int64_t
-os_get_uptime_usec(void)
+void
+os_get_uptime(struct os_timeval *tvp)
 {
   struct os_timeval tv;
   os_time_t delta;
   os_sr_t sr;
   os_time_t ostime;
-
 
   OS_ENTER_CRITICAL(sr);
   tv = basetod.uptime;
@@ -226,20 +175,19 @@ os_get_uptime_usec(void)
   delta = os_time_get() - ostime;
   OS_EXIT_CRITICAL(sr);
 
-  os_deltatime(delta, &tv, &tv);
-
-  return(tv.tv_sec * 1000000 + tv.tv_usec);
+  os_deltatime(delta, &tv, tvp);
 }
 
-/**
- * Converts milliseconds to OS ticks.
- *
- * @param ms                    The milliseconds input.
- * @param out_ticks             The OS ticks output.
- *
- * @return                      0 on success; OS_EINVAL if the result is too
- *                                  large to fit in a uint32_t.
- */
+int64_t
+os_get_uptime_usec(void)
+{
+  struct os_timeval tv;
+
+  os_get_uptime(&tv);
+
+  return (tv.tv_sec * 1000000 + tv.tv_usec);
+}
+
 int
 os_time_ms_to_ticks(uint32_t ms, uint32_t *out_ticks)
 {
@@ -253,7 +201,7 @@ os_time_ms_to_ticks(uint32_t ms, uint32_t *out_ticks)
     _Static_assert(OS_TICKS_PER_SEC <= UINT32_MAX,
                    "OS_TICKS_PER_SEC must be <= UINT32_MAX");
 
-    ticks = (uint64_t)ms * OS_TICKS_PER_SEC / 1000;
+    ticks = ((uint64_t)ms * OS_TICKS_PER_SEC) / 1000;
     if (ticks > UINT32_MAX) {
         return OS_EINVAL;
     }
@@ -262,7 +210,42 @@ os_time_ms_to_ticks(uint32_t ms, uint32_t *out_ticks)
     return 0;
 }
 
-/**
- *   @} OSKernel
- * @} OSTime
- */
+int
+os_time_ticks_to_ms(uint32_t ticks, uint32_t *out_ms)
+{
+    uint64_t ms;
+
+#if OS_TICKS_PER_SEC == 1000
+    *out_ms = ticks;
+    return 0;
+#endif
+
+    ms = ((uint64_t)ticks * 1000) / OS_TICKS_PER_SEC;
+    if (ms > UINT32_MAX) {
+        return OS_EINVAL;
+    }
+
+    *out_ms = ms;
+
+    return 0;
+}
+
+uint32_t
+os_time_ms_to_ticks32(uint32_t ms)
+{
+#if OS_TICKS_PER_SEC == 1000
+    return ms;
+#else
+    return ((uint64_t)ms * OS_TICKS_PER_SEC) / 1000;
+#endif
+}
+
+uint32_t
+os_time_ticks_to_ms32(uint32_t ticks)
+{
+#if OS_TICKS_PER_SEC == 1000
+    return ticks;
+#else
+    return ((uint64_t)ticks * 1000) / OS_TICKS_PER_SEC;
+#endif
+}

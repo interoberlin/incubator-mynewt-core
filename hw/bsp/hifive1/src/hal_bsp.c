@@ -21,9 +21,7 @@
 #include <stddef.h>
 #include <assert.h>
 
-#include <os/os_cputime.h>
-#include <syscfg/syscfg.h>
-#include <sysflash/sysflash.h>
+#include "os/mynewt.h"
 #include <flash_map/flash_map.h>
 #include <hal/hal_bsp.h>
 #include <hal/hal_flash.h>
@@ -34,7 +32,6 @@
 #include <uart/uart.h>
 #include <uart_hal/uart_hal.h>
 #endif
-#include <os/os_dev.h>
 #include <bsp/bsp.h>
 #include <env/freedom-e300-hifive1/platform.h>
 
@@ -106,6 +103,16 @@ hal_bsp_init(void)
 
 #if (MYNEWT_VAL(OS_CPUTIME_TIMER_NUM) >= 0)
     rc = os_cputime_init(MYNEWT_VAL(OS_CPUTIME_FREQ));
+    assert(rc == 0);
+#endif
+
+#if MYNEWT_VAL(SPI_1)
+    rc = hal_spi_init(1, NULL, HAL_SPI_TYPE_MASTER);
+    assert(rc == 0);
+#endif
+
+#if MYNEWT_VAL(SPI_2)
+    rc = hal_spi_init(2, NULL, HAL_SPI_TYPE_MASTER);
     assert(rc == 0);
 #endif
 
